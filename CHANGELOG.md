@@ -20,7 +20,7 @@ All notable changes to the Agent Flight Recorder project.
 - Runs list includes `failure_detectors` (list of detector names that fired). Simulation model has `template_config` and `dataset_id`; worker uses template_config for custom prompt and dataset for tasks.
 - SQLite migrations in `app.db.base.run_sqlite_migrations()` (template_config, dataset_id, etc.) run on API and worker startup.
 
-## [1.0.0] – 2025-03
+## [1.0.0] – 2026-03
 
 ### Added
 
