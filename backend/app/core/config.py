@@ -25,5 +25,9 @@ class Settings(BaseSettings):
     # If set, serve frontend static files from this directory (e.g. ./static). Use for single-host deploy.
     static_dir: str | None = Field(default=None, validation_alias="STATIC_DIR")
 
+    # Optional webhook: POST when a run has a failure score >= this (0-100). Body: {"run_id", "max_score", "detectors"}.
+    webhook_url: str | None = Field(default=None, validation_alias="WEBHOOK_URL")
+    webhook_threshold: int = Field(default=80, validation_alias="WEBHOOK_THRESHOLD")
+
 
 settings = Settings()

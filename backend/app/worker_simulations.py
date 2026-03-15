@@ -43,15 +43,25 @@ def generate_task(template: str) -> Dict[str, Any]:
     return {"query": "Say hello", "env": {"task_type": "generic"}}
 
 
+async def _post_with_retry(client: httpx.AsyncClient, url: str, json: dict, max_attempts: int = 3) -> bool:
+    for attempt in range(max_attempts):
+        try:
+            r = await client.post(url, json=json)
+            if r.is_success:
+                return True
+        except Exception:
+            pass
+        if attempt < max_attempts - 1:
+            await asyncio.sleep(1.0 * (attempt + 1))
+    return False
+
+
 async def run_simulation_once(db: Session, sim: Simulation) -> None:
     async with httpx.AsyncClient(timeout=30) as client:
         for _ in range(sim.num_runs):
             payload = generate_task(sim.task_template)
             payload["env"]["simulation_id"] = str(sim.id)
-            try:
-                await client.post(sim.agent_endpoint, json=payload)
-            except Exception:
-                continue
+            await _post_with_retry(client, sim.agent_endpoint, payload)
 
     # Recompute metrics: total_runs = runs linked via simulation_id; success_rate = % with
     # status "success"; hallucination_rate = % of runs with at least one hallucination failure.

@@ -8,6 +8,8 @@ type RunSummary = {
   agent_version: string | null
   latency_ms: number | null
   status: string
+  user_query?: string | null
+  failure_count?: number
 }
 
 type RunDetail = {
@@ -98,6 +100,13 @@ function App() {
   const [simCreateMsg, setSimCreateMsg] = useState<string | null>(null)
   const [patterns, setPatterns] = useState<FailurePattern[]>([])
   const [patternsDays, setPatternsDays] = useState<7 | 30>(7)
+  const [hasMoreRuns, setHasMoreRuns] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [agents, setAgents] = useState<string[]>([])
+  const [filterAgentId, setFilterAgentId] = useState<string>('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [copyRunIdMsg, setCopyRunIdMsg] = useState<string | null>(null)
 
   const saveApiKey = () => {
     if (apiKey.trim()) localStorage.setItem(STORAGE_API_KEY, apiKey.trim())
@@ -132,29 +141,75 @@ function App() {
     }
   }
 
-  useEffect(() => {
-    const fetchRuns = async () => {
-      try {
-        setLoadingRuns(true)
-        const url = selectedSimulationId
-          ? `${API_BASE}/api/v1/runs?limit=50&simulation_id=${selectedSimulationId}`
-          : `${API_BASE}/api/v1/runs?limit=50`
-        const res = await fetch(url)
-        if (!res.ok) throw new Error(`Failed to load runs: ${res.status}`)
-        const data: RunSummary[] = await res.json()
-        setRuns(data)
-        setError(null)
-        if (data.length > 0 && !selectedRunId) {
-          setSelectedRunId(data[0].id)
-        }
-      } catch (e) {
-        setError((e as Error).message)
-      } finally {
-        setLoadingRuns(false)
-      }
+  const limit = 50
+
+  const buildRunsUrl = (offset: number) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (selectedSimulationId) params.set('simulation_id', selectedSimulationId)
+    if (filterAgentId) params.set('agent_id', filterAgentId)
+    if (filterDateFrom) params.set('date_from', filterDateFrom)
+    if (filterDateTo) params.set('date_to', filterDateTo)
+    return `${API_BASE}/api/v1/runs?${params}`
+  }
+
+  const fetchRuns = async (offset: number, append: boolean) => {
+    if (append) setLoadingMore(true)
+    else setLoadingRuns(true)
+    try {
+      const res = await fetch(buildRunsUrl(offset))
+      if (!res.ok) throw new Error(`Failed to load runs: ${res.status}`)
+      const data: RunSummary[] = await res.json()
+      if (append) setRuns((prev) => (offset === 0 ? data : [...prev, ...data]))
+      else setRuns(data)
+      setHasMoreRuns(data.length === limit)
+      setError(null)
+      if (data.length > 0 && !selectedRunId && offset === 0) setSelectedRunId(data[0].id)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoadingMore(false)
+      setLoadingRuns(false)
     }
-    fetchRuns()
-  }, [selectedRunId, selectedSimulationId])
+  }
+
+  const loadMore = () => {
+    fetchRuns(runs.length, true)
+  }
+
+  const refreshAll = () => {
+    fetchRuns(0, false)
+    setRunsPerDay([])
+    setPatterns([])
+    fetch(`${API_BASE}/api/v1/analytics/runs_summary?days=${analyticsTab === '30d' ? 30 : analyticsTab === '7d' ? 7 : 1}`)
+      .then((r) => r.ok && r.json())
+      .then((d) => d && setRunsPerDay(d.runs_per_day ?? []))
+      .catch(() => {})
+    fetch(`${API_BASE}/api/v1/failure_patterns?days=${patternsDays}`)
+      .then((r) => r.ok && r.json())
+      .then((d) => d && setPatterns(d.patterns ?? []))
+      .catch(() => {})
+    fetch(`${API_BASE}/api/v1/simulations`)
+      .then((r) => r.ok && r.json())
+      .then((d) => d && setSimulations(d))
+      .catch(() => {})
+    if (selectedRunId) {
+      fetch(`${API_BASE}/api/v1/runs/${selectedRunId}`)
+        .then((r) => r.ok && r.json())
+        .then((d) => d && setSelectedRun(d))
+        .catch(() => {})
+    }
+  }
+
+  useEffect(() => {
+    fetchRuns(0, false)
+  }, [selectedSimulationId, filterAgentId, filterDateFrom, filterDateTo])
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/v1/runs/agents`)
+      .then((r) => r.ok && r.json())
+      .then((d) => Array.isArray(d) && setAgents(d))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const fetchRunDetail = async () => {
@@ -240,6 +295,9 @@ function App() {
           <p>Replay and analyze AI agent executions.</p>
         </div>
         <div className="header-actions">
+          <button type="button" className="btn-header" onClick={refreshAll} title="Refresh runs, analytics, and patterns">
+            Refresh
+          </button>
           <button type="button" className="btn-header" onClick={() => setShowOnboarding(true)}>
             Get started
           </button>
@@ -379,15 +437,15 @@ function App() {
 
       <main className="app-main">
         <section className="metrics-row">
-          <div className="metric-card">
-            <div className="metric-label">Total Runs (last 24h)</div>
+          <div className="metric-card" title="Number of runs currently loaded in the list (use filters or Load more to change scope).">
+            <div className="metric-label">Total Runs</div>
             <div className="metric-value">{runs.length}</div>
             <div className="metric-trend">
               <span className="badge-up">+0%</span>
               <span>vs. previous</span>
             </div>
           </div>
-          <div className="metric-card">
+          <div className="metric-card" title="Average response time in milliseconds across the loaded runs.">
             <div className="metric-label">Avg Latency</div>
             <div className="metric-value">
               {avgLatency !== null ? `${avgLatency} ms` : '—'}
@@ -397,7 +455,7 @@ function App() {
               <span>vs. previous</span>
             </div>
           </div>
-          <div className="metric-card">
+          <div className="metric-card" title="Percentage of loaded runs with status 'success'.">
             <div className="metric-label">Success Rate</div>
             <div className="metric-value">
               {successRate !== null ? `${successRate}%` : '—'}
@@ -407,9 +465,11 @@ function App() {
               <span>vs. previous</span>
             </div>
           </div>
-          <div className="metric-card">
-            <div className="metric-label">Hallucination Alerts</div>
-            <div className="metric-value">0</div>
+          <div className="metric-card" title="Runs with at least one failure detected (hallucination, planning, or tool misuse).">
+            <div className="metric-label">Runs with Failures</div>
+            <div className="metric-value">
+              {runs.filter((r) => (r.failure_count ?? 0) > 0).length}
+            </div>
             <div className="metric-trend">
               <span className="badge-up">+0%</span>
               <span>vs. previous</span>
@@ -426,42 +486,112 @@ function App() {
                   Latest executions recorded via the Flight Recorder.
                 </div>
               </div>
-            </div>
-            {error && (
-              <p className="error">Could not reach API or load runs ({error}). Check that the backend script is running.</p>
-            )}
-            {selectedSimulationId && !error && (
               <button
                 type="button"
-                className="btn-clear-filter"
-                onClick={() => setSelectedSimulationId(null)}
+                className="btn-header"
+                onClick={() => {
+                  const q = new URLSearchParams({ format: 'csv', limit: '1000' })
+                  if (filterAgentId) q.set('agent_id', filterAgentId)
+                  if (filterDateFrom) q.set('date_from', filterDateFrom)
+                  if (filterDateTo) q.set('date_to', filterDateTo)
+                  fetch(`${API_BASE}/api/v1/runs/export?${q}`)
+                    .then((r) => r.blob())
+                    .then((blob) => {
+                      const a = document.createElement('a')
+                      a.href = URL.createObjectURL(blob)
+                      a.download = 'runs.csv'
+                      a.click()
+                      URL.revokeObjectURL(a.href)
+                    })
+                    .catch(() => {})
+                }}
               >
-                Show all runs
+                Export CSV
               </button>
+            </div>
+            {error && (
+              <p className="error">Could not reach API or load runs ({error}). Check that the backend is running.</p>
             )}
-            {loadingRuns && <p>Loading runs…</p>}
-            {error && <p className="error">{error}</p>}
-            {!loadingRuns && runs.length === 0 && (
-              <p>No runs yet. Trigger an agent run via the SDK.</p>
-            )}
-            <ul>
-              {runs.map((run) => (
-                <li
-                  key={run.id}
-                  className={run.id === selectedRunId ? 'run-item selected' : 'run-item'}
-                  onClick={() => setSelectedRunId(run.id)}
+            <div className="runs-toolbar">
+              {agents.length > 0 && (
+                <select
+                  className="filter-select"
+                  value={filterAgentId}
+                  onChange={(e) => setFilterAgentId(e.target.value)}
+                  title="Filter by agent"
                 >
-                  <div className="run-title">
-                    <span className="run-agent">{run.agent_id}</span>
-                    <span className={`run-status status-${run.status}`}>{run.status}</span>
-                  </div>
-                  <div className="run-meta">
-                    <span>{new Date(run.created_at).toLocaleString()}</span>
-                    {run.latency_ms != null && <span>{run.latency_ms} ms</span>}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  <option value="">All agents</option>
+                  {agents.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              )}
+              <input
+                type="date"
+                className="filter-input"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                title="From date"
+              />
+              <input
+                type="date"
+                className="filter-input"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                title="To date"
+              />
+              {selectedSimulationId && !error && (
+                <button type="button" className="btn-clear-filter" onClick={() => setSelectedSimulationId(null)}>
+                  Show all runs
+                </button>
+              )}
+            </div>
+            {loadingRuns && (
+              <div className="skeleton-list">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="skeleton-line" />
+                ))}
+              </div>
+            )}
+            {!loadingRuns && runs.length === 0 && !error && (
+              <div className="empty-state">
+                <p>No runs yet.</p>
+                <p className="empty-state-hint">Send your first run with the SDK or run a simulation. See <code>docs/RUNBOOK.md</code> for <code>send_test_run.py</code> and API examples.</p>
+              </div>
+            )}
+            {!loadingRuns && runs.length > 0 && (
+              <>
+                <ul>
+                  {runs.map((run) => (
+                    <li
+                      key={run.id}
+                      className={run.id === selectedRunId ? 'run-item selected' : 'run-item'}
+                      onClick={() => setSelectedRunId(run.id)}
+                    >
+                      <div className="run-title">
+                        <span className="run-agent">{run.agent_id}</span>
+                        <span className={`run-status status-${run.status}`}>{run.status}</span>
+                        {(run.failure_count ?? 0) > 0 && (
+                          <span className="run-failure-pill" title="Failure count">{run.failure_count} failures</span>
+                        )}
+                      </div>
+                      {run.user_query && (
+                        <div className="run-query-preview" title={run.user_query}>{run.user_query}</div>
+                      )}
+                      <div className="run-meta">
+                        <span>{new Date(run.created_at).toLocaleString()}</span>
+                        {run.latency_ms != null && <span>{run.latency_ms} ms</span>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {hasMoreRuns && (
+                  <button type="button" className="btn-load-more" onClick={loadMore} disabled={loadingMore}>
+                    {loadingMore ? 'Loading…' : 'Load more'}
+                  </button>
+                )}
+              </>
+            )}
           </div>
 
           <div className="card-panel run-detail">
@@ -473,12 +603,33 @@ function App() {
                 </div>
               </div>
             </div>
-            {loadingRunDetail && <p>Loading run detail…</p>}
+            {loadingRunDetail && (
+              <div className="skeleton-detail">
+                <div className="skeleton-line" style={{ width: '60%' }} />
+                <div className="skeleton-line" style={{ width: '90%' }} />
+                <div className="skeleton-line" style={{ width: '40%' }} />
+              </div>
+            )}
             {!loadingRunDetail && !selectedRun && (
               <p>Select a run from the left to inspect it.</p>
             )}
             {selectedRun && (
               <>
+                <div className="run-detail-header-actions">
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => {
+                      if (selectedRun?.run.id) {
+                        navigator.clipboard.writeText(selectedRun.run.id)
+                        setCopyRunIdMsg('Copied!')
+                        setTimeout(() => setCopyRunIdMsg(null), 2000)
+                      }
+                    }}
+                  >
+                    {copyRunIdMsg ?? 'Copy run ID'}
+                  </button>
+                </div>
                 <div className="run-summary">
                   <p>
                     <strong>Agent:</strong> {selectedRun.run.agent_id}{' '}

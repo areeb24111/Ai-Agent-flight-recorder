@@ -3,13 +3,25 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List
 
+import httpx
 from sqlalchemy.orm import Session
 
+from app.core.config import settings as app_settings
 from app.db.base import SessionLocal
 from app.db.models import Failure, Run, Step
 from app.detectors.hallucination import detect_hallucination
 from app.detectors.planning import detect_planning_failure
 from app.detectors.tool_misuse import detect_tool_misuse
+
+
+async def _with_retry(coro_fn, max_attempts: int = 3):
+    for attempt in range(max_attempts):
+        try:
+            return await coro_fn()
+        except Exception:
+            if attempt == max_attempts - 1:
+                raise
+            await asyncio.sleep(1.0 * (attempt + 1))
 
 
 async def process_run(db: Session, run: Run) -> None:
@@ -38,9 +50,12 @@ async def process_run(db: Session, run: Run) -> None:
     }
     failures: List[Dict[str, Any]] = []
 
-    failures.extend(await detect_hallucination(run_dict))
-    failures.extend(await detect_planning_failure(run_dict))
-    failures.extend(await detect_tool_misuse(run_dict))
+    try:
+        failures.extend(await _with_retry(lambda: detect_hallucination(run_dict)))
+        failures.extend(await _with_retry(lambda: detect_planning_failure(run_dict)))
+        failures.extend(await _with_retry(lambda: detect_tool_misuse(run_dict)))
+    except Exception:
+        pass
 
     # compute overall reliability score from individual detectors
     overall_score = 100
@@ -80,6 +95,24 @@ async def process_run(db: Session, run: Run) -> None:
         )
 
     run.processed_for_failures = 1
+
+    if app_settings.webhook_url and failures:
+        max_score = max(
+            (f.get("score") or 0) for f in failures if f.get("detector") != "overall"
+        )
+        if max_score >= app_settings.webhook_threshold:
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    await client.post(
+                        app_settings.webhook_url,
+                        json={
+                            "run_id": str(run.id),
+                            "max_score": max_score,
+                            "detectors": [f.get("detector") for f in failures if f.get("detector") != "overall"],
+                        },
+                    )
+            except Exception:
+                pass
 
 
 async def process_pending_runs_once(batch_size: int = 20) -> None:

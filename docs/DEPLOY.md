@@ -39,6 +39,10 @@ Set these on your host or in your platform’s dashboard. Never commit real valu
 | `OPENAI_API_KEY` | For detectors | Needed for hallucination/planning detectors. |
 | `CORS_ORIGINS` | If frontend on different domain | Comma-separated, e.g. `https://myapp.fly.dev,https://myapp.render.com`. |
 | `STATIC_DIR` | Optional (combined deploy) | Path to built frontend, e.g. `./static`. See §4. |
+| `WEBHOOK_URL` | Optional | HTTP POST when a run has failure score ≥ `WEBHOOK_THRESHOLD`. |
+| `WEBHOOK_THRESHOLD` | Optional (default 80) | Score 0–100; triggers webhook when any detector exceeds it. |
+
+**Workers in the cloud:** For failure detection and simulations to run in production, run `worker_failures` and `worker_simulations` as separate processes (e.g. Render background workers, or separate services). Point them at the same `DATABASE_URL` and `OPENAI_API_KEY`. The API only stores runs; the workers process them asynchronously.
 
 ---
 

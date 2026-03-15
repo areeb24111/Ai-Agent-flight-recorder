@@ -1,5 +1,6 @@
 # Render Blueprint: Agent Flight Recorder
-# Connect this repo at dashboard.render.com → New → Blueprint. Add OPENAI_API_KEY (and optional API_KEY) in the service Environment.
+# Connect this repo at dashboard.render.com → New → Blueprint. Add OPENAI_API_KEY in the API service Environment.
+# For the Static Site: set env var VITE_API_BASE = your API URL (e.g. https://agent-flight-recorder-api.onrender.com) before deploy.
 services:
   - type: web
     name: agent-flight-recorder-api
@@ -13,4 +14,14 @@ services:
       - key: OPENAI_API_KEY
         sync: false
     healthCheckPath: /health
-# Optional: add a Postgres database in Render and set DATABASE_URL in the web service env (otherwise the app uses SQLite; data is ephemeral on free tier).
+
+  - type: web
+    name: agent-flight-recorder-dashboard
+    runtime: static
+    rootDir: .
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_BASE
+        sync: false
+# Optional: add a Postgres database in Render and set DATABASE_URL in the API service env (otherwise the app uses SQLite; data is ephemeral on free tier).

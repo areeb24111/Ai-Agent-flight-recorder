@@ -197,6 +197,15 @@ body {
   font-weight: 600;
 }
 
+.run-query-preview {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .run-status {
   font-size: 11px;
   padding: 2px 8px;
@@ -212,6 +221,27 @@ body {
 .status-failure {
   background: #fee2e2;
   color: #b91c1c;
+}
+
+.empty-state {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.empty-state-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  max-width: 360px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.empty-state-hint code {
+  font-size: 11px;
+  background: var(--accent-soft);
+  padding: 1px 4px;
+  border-radius: 4px;
 }
 
 .run-meta {
@@ -392,6 +422,76 @@ body {
 .btn-clear-filter:hover {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.runs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.filter-select,
+.filter-input {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--card-bg);
+}
+
+.run-failure-pill {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: var(--danger);
+  margin-left: 6px;
+}
+
+.btn-load-more {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--card-bg);
+  cursor: pointer;
+}
+
+.btn-load-more:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.btn-load-more:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.run-detail-header-actions {
+  margin-bottom: 10px;
+}
+
+.skeleton-list,
+.skeleton-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton-line {
+  height: 14px;
+  background: linear-gradient(90deg, var(--border-subtle) 25%, #e8eaf0 50%, var(--border-subtle) 75%);
+  background-size: 200% 100%;
+  animation: skeleton 1s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .error {

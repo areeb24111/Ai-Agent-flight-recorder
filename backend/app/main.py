@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from sqlalchemy import text
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +14,11 @@ from app.routes import runs, simulations, analytics, failure_patterns
 
 from app.core.config import settings as app_settings
 
-app = FastAPI(title="Agent Flight Recorder MVP")
+app = FastAPI(
+    title="Agent Flight Recorder API",
+    description="Record AI agent runs, run failure detectors (hallucination, planning, tool misuse), and export or query runs. Use the dashboard to replay runs and view failure patterns.",
+    version="1.0.0",
+)
 
 _cors_origins = [
     "http://localhost:5173",
@@ -90,7 +95,15 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok"}
+    """Liveness and optional DB connectivity check."""
+    out: dict = {"status": "ok"}
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        out["database"] = "connected"
+    except Exception:
+        out["database"] = "error"
+    return out
 
 
 app.include_router(runs.router)
