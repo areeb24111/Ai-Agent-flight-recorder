@@ -565,14 +565,14 @@ function App() {
                           </span>
                         </div>
                         <div className="step-body">
-                          {s.request && (
+                          {s.request != null && (
                             <pre className="step-block">
                               <strong>Request</strong>
                               {'\n'}
                               {JSON.stringify(s.request, null, 2)}
                             </pre>
                           )}
-                          {s.response && (
+                          {s.response != null && (
                             <pre className="step-block">
                               <strong>Response</strong>
                               {'\n'}
