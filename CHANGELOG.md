@@ -6,7 +6,7 @@ All notable changes to the Agent Flight Recorder project.
 
 ### Added
 
-- **README** – Reformatted with Problem, Solution, Features, Dashboard Screenshot, Architecture, Installation, Usage, Simulation Testing, Roadmap, Contributing, License. Added architecture diagram (docs/architecture.png) and dashboard screenshot placeholders.
+- **README** – Reformatted with Problem, Solution, Features, Dashboard Screenshot, Architecture, Installation, Usage, Simulation Testing, Roadmap, Contributing, License. Added architecture diagram and dashboard screenshot placeholders.
 - **Demo script** – `backend/demo_intentional_failures.py` sends 7 runs that intentionally trigger detectors (hallucination, tool misuse, reasoning loop, memory contradiction, planning, kitchen sink). Clear 401 hint when API key is required.
 - **Custom simulation template** – Optional `template_config: { query, env }` for simulations; UI supports "custom" task template with custom query field. Backend and worker use `template_config` when set.
 - **Five failure detectors** – reasoning_loop and memory_contradiction detectors; configurable per-detector thresholds via env (DETECTOR_*_THRESHOLD). Failure worker runs all five and persists only failures above threshold.
@@ -46,4 +46,4 @@ All notable changes to the Agent Flight Recorder project.
 
 ## [Unreleased]
 
-- See docs/IMPROVEMENTS.md for planned work.
+- Planned work tracked in GitHub issues.

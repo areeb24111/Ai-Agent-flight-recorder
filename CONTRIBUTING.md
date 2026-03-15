@@ -20,7 +20,7 @@ Thanks for your interest in improving the Agent Flight Recorder. This doc covers
    - `npm install && npm run dev`
    - Open http://localhost:5173
 
-See [docs/RUNBOOK.md](docs/RUNBOOK.md) for full runbook and [docs/DEPLOY.md](docs/DEPLOY.md) for deployment.
+See README for full setup, usage, and deployment notes.
 
 ## Running tests
 

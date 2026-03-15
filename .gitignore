@@ -21,6 +21,9 @@ backend/static/
 backend/logs/
 *.log
 
+# Local docs (not published to GitHub)
+docs/
+
 # IDE / OS
 .idea/
 .vscode/

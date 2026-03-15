@@ -30,7 +30,7 @@ Agent Flight Recorder gives you a single place to:
 - **Dashboard** — Recent runs, run detail with trace timeline and failure pills, analytics chart (including per-detector rates), failure patterns, failure clusters, simulation list and filtering.
 - **Auth & limits** — Optional API key on write endpoints; per-IP rate limits.
 
-**Demo:** To fill the dashboard with intentional failures for a demo, run **`python backend/demo_intentional_failures.py`** — see [docs/DEMO.md](docs/DEMO.md).
+**Demo:** To fill the dashboard with intentional failures for a demo, run **`python backend/demo_intentional_failures.py`** (set `FLIGHT_RECORDER_API_KEY` if your API requires auth).
 
 ---
 
@@ -56,9 +56,9 @@ The dashboard shows metrics, recent runs with reliability and failure indicators
 
 High-level flow: agents (via SDK) send runs to the API; the failure worker categorizes them (hallucination, planning, tool misuse, reasoning loop, memory contradiction); analytics are stored in SQLite/Postgres with optional embedding-based clustering; the simulation engine runs batch tests from templates or datasets; the dashboard reads from the API to show runs, metrics, and failure patterns.
 
-![Architecture diagram](docs/architecture.png)
+*Add your architecture diagram (e.g. `architecture.png`) to the repo and link it here.*
 
-*Failure detection → Analytics (SQLite/Postgres, optional clustering) → Simulation engine (API + worker + templates) → Dashboard (API + React).*
+Failure detection → Analytics (SQLite/Postgres, optional clustering) → Simulation engine (API + worker + templates) → Dashboard (API + React).
 
 **Repo layout:**
 
@@ -72,7 +72,6 @@ backend/           # FastAPI app, workers, SDK, demo agent
   simple_agent_api.py
   demo_intentional_failures.py
 frontend/          # Vite + React dashboard
-docs/              # RUNBOOK, TESTING, DEMO, DEPLOY, architecture.png, etc.
 ```
 
 - **API** — Ingests runs, serves runs/analytics/patterns/clusters, creates simulations and datasets.
@@ -136,8 +135,8 @@ Then open **http://localhost:5173**. To ingest a run and verify the flow, see [d
   ```
 - If the API requires an API key: add `-H "X-API-Key: YOUR_API_KEY"`.
 
-**Deploy online:** See [docs/DEPLOY.md](docs/DEPLOY.md) for Render, Railway, or Google Cloud Run.  
-**Share with others:** See [docs/HOW_OTHERS_USE_IT.md](docs/HOW_OTHERS_USE_IT.md) for how others use your deployment to check their agents.
+**Deploy online:** Connect the repo to Render, Railway, or Google Cloud Run; set env vars (e.g. `DATABASE_URL`, `OPENAI_API_KEY`, `API_KEY`). Run the API and workers (see Manual run).  
+**Share with others:** Give them your dashboard URL and API URL; they send runs via `POST /api/v1/runs` (or the SDK) and view results in your dashboard.
 
 ---
 
@@ -149,13 +148,13 @@ Create simulation jobs that call your agent endpoint repeatedly and record each 
 2. Click **Create simulation**. The simulation worker will POST each task to your agent; runs appear under **Recent runs**. Filter by simulation via **View runs**.
 3. **API:** `POST /api/v1/simulations` with `name`, `agent_endpoint`, `task_template`, `num_runs`, and optionally `template_config: { "query": "..." }` for a custom prompt or `dataset_id` for a task dataset.
 
-Metrics shown: total runs, completed, success %, hallucination %, tool error %, avg latency. See [docs/RUNBOOK.md](docs/RUNBOOK.md) for more detail.
+Metrics shown: total runs, completed, success %, hallucination %, tool error %, avg latency.
 
 ---
 
 ## Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the 2–4 week evolution plan (trace timeline UI, failure badges, clustering, optional Postgres + pgvector). Current status and ideas are in [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
+Planned: trace timeline UI, failure badges, embedding-based clustering, optional Postgres + pgvector. See CHANGELOG for release history.
 
 ---
 
