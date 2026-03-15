@@ -1,58 +1,163 @@
 # Agent Flight Recorder
 
-Record AI agent runs, detect failures (hallucination, planning, tool misuse, reasoning loop, memory contradiction), run batch simulations, and inspect everything in a dashboard. **Why:** AI agents fail in subtle ways; without a recorder you can't replay, compare, or spot patterns. This gives you a single place to see what happened and how often it goes wrong.
+Record AI agent runs, detect failures, run batch simulations, and inspect everything in one dashboard.
 
-**What it does:**
+---
 
-- Records every agent run (query, steps, tool calls, final answer) via a small SDK and ingestion API.
-- Runs five automatic failure detectors (hallucination, planning, tool misuse, reasoning_loop, memory_contradiction) and shows per-run scores in the dashboard.
-- Lets you run batch simulations against your agent endpoint (task templates or custom task datasets) and see success, hallucination, and tool-error rates.
-- Gives you a single dashboard to replay runs, inspect steps, filter by simulation, and view analytics (including per-detector failure rates over time).
+## Problem
 
-The dashboard shows metrics (runs, latency, success rate), a list of recent runs with replay, run detail (steps and failure scores), an analytics chart over time, and simulations you can click to filter runs.
+AI agents fail in subtle ways: hallucinations, bad reasoning, tool misuse, planning errors, and contradictions. Without a recorder you can't replay runs, compare behavior, or spot patterns. Debugging becomes guesswork and you have no visibility into how often things go wrong in production.
 
-![Dashboard](docs/screenshot.png)  
-*Add a screenshot of the dashboard with sample data (e.g. `docs/screenshot.png`).*
+---
+
+## Solution
+
+Agent Flight Recorder gives you a single place to:
+
+- **Record** every agent run (query, steps, tool calls, final answer) via a small SDK or HTTP API.
+- **Detect** failures automatically with five detectors: hallucination, planning failure, tool misuse, reasoning loop, and memory contradiction.
+- **Simulate** batch tests against your agent endpoint and see success, hallucination, and tool-error rates.
+- **Inspect** runs in a dashboard: replay steps, view reliability scores, analytics over time, failure patterns, and clusters.
+
+---
 
 ## Features
 
-- **Trace ingestion** – `POST /api/v1/runs` stores runs + steps (SDK or HTTP).
-- **Failure detection** – Background worker runs five detectors (hallucination, planning, tool_misuse, reasoning_loop, memory_contradiction); scores appear in the UI.
-- **Simulations** – Create jobs that call your agent endpoint with built-in task templates (**math_qa**, **doc_qa**, **multi_turn**, **code_assist**), a **custom prompt** (template `custom` + `template_config.query`), or a **task dataset**; metrics include success_rate, hallucination_rate, tool_error_rate, avg_latency_ms.
-- **Task datasets** – Create named prompt sets via `POST /api/v1/datasets` and optionally attach to simulations.
-- **Dashboard** – Recent runs, run detail with steps and failures, analytics chart (with optional per-detector rates), simulation list and filtering.
-- **Auth & limits** – Optional API key on write endpoints; per-IP rate limits.
+- **Trace ingestion** — `POST /api/v1/runs` stores runs and steps (SDK or raw HTTP).
+- **Failure detection** — Background worker runs five detectors; per-run scores appear in the UI (hallucination, planning, tool_misuse, reasoning_loop, memory_contradiction).
+- **Simulations** — Create jobs with built-in templates (math_qa, doc_qa, multi_turn, code_assist), a **custom prompt**, or a **task dataset**; metrics include success_rate, hallucination_rate, tool_error_rate, avg_latency_ms.
+- **Task datasets** — Create named prompt sets via `POST /api/v1/datasets` and attach to simulations.
+- **Dashboard** — Recent runs, run detail with trace timeline and failure pills, analytics chart (including per-detector rates), failure patterns, failure clusters, simulation list and filtering.
+- **Auth & limits** — Optional API key on write endpoints; per-IP rate limits.
 
-**Evolution plan:** See **[docs/ROADMAP.md](docs/ROADMAP.md)** for the 2–4 week roadmap (trace timeline UI, failure badges, clustering, etc.).
+**Demo:** To fill the dashboard with intentional failures for a demo, run **`python backend/demo_intentional_failures.py`** — see [docs/DEMO.md](docs/DEMO.md).
 
-## Repo layout
+---
+
+## Dashboard Screenshot
+
+The dashboard shows metrics, recent runs with reliability and failure indicators, run detail with a step-by-step trace timeline, analytics over time, failure patterns, and simulation management.
+
+| Overview & run detail | Analytics & failure patterns |
+|----------------------|------------------------------|
+| ![Dashboard overview and run detail](docs/screenshot-overview.png) | ![Analytics and failure patterns](docs/screenshot-analytics.png) |
+
+*Metrics (total runs, latency, success rate, runs with failures), recent runs list, run detail with trace timeline and detector scores (e.g. tool misuse), and the simulations form.*
+
+![Failure clusters and simulations](docs/screenshot-simulations.png)
+
+*Failure clusters (grouped similar failures) and simulations: create jobs with templates or custom prompts, view completed runs and success/hallucination rates.*
+
+**Note:** Add your own screenshots to the `docs/` folder as `screenshot-overview.png`, `screenshot-analytics.png`, and `screenshot-simulations.png`, or update the paths above to match your files.
+
+---
+
+## Architecture
+
+High-level flow: agents (via SDK) send runs to the API; the failure worker categorizes them (hallucination, planning, tool misuse, reasoning loop, memory contradiction); analytics are stored in SQLite/Postgres with optional embedding-based clustering; the simulation engine runs batch tests from templates or datasets; the dashboard reads from the API to show runs, metrics, and failure patterns.
+
+![Architecture diagram](docs/architecture.png)
+
+*Failure detection → Analytics (SQLite/Postgres, optional clustering) → Simulation engine (API + worker + templates) → Dashboard (API + React).*
+
+**Repo layout:**
 
 ```
 backend/           # FastAPI app, workers, SDK, demo agent
   app/
-    routes/        # runs, simulations, analytics, detectors, datasets, failure_patterns
+    routes/        # runs, simulations, analytics, detectors, datasets, failure_patterns, failure_clusters
     detectors/     # hallucination, planning, tool_misuse, reasoning_loop, memory_contradiction
     deps/          # auth, rate_limit
   sdk_flight_recorder.py
   simple_agent_api.py
+  demo_intentional_failures.py
 frontend/          # Vite + React dashboard
-docs/
-  RUNBOOK.md        # how to run everything
+docs/              # RUNBOOK, TESTING, DEMO, DEPLOY, architecture.png, etc.
 ```
 
-## Quick start (local dev)
+- **API** — Ingests runs, serves runs/analytics/patterns/clusters, creates simulations and datasets.
+- **Workers** — `worker_failures` processes runs with detectors; `worker_simulations` runs simulation jobs against agent endpoints.
+- **Dashboard** — React app for listing runs, viewing run detail (trace timeline, failures), analytics charts, failure patterns/clusters, and simulations.
 
-From the **repo root**, one command starts the backend (API + workers + demo agent) and optionally the dashboard. **To ingest a run and verify everything works**, see **[docs/TESTING.md](docs/TESTING.md)** (curl, Python, or SDK).
+---
+
+## Installation
+
+1. **Clone the repo**
+   ```bash
+   git clone https://github.com/areeb24111/Ai-Agent-flight-recorder.git
+   cd Ai-Agent-flight-recorder
+   ```
+
+2. **Backend** (Python 3.10+)
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   cp .env.example .env   # edit .env: optional API_KEY, OPENAI_API_KEY for detectors
+   ```
+
+3. **Frontend**
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+4. **Optional:** Configure `backend/.env` with `API_KEY` (if you want to protect write endpoints) and `OPENAI_API_KEY` (for stronger hallucination/planning/memory-contradiction detection).
+
+---
+
+## Usage
+
+### Local (one-command start)
+
+From the **repo root**:
 
 - **Windows:** `.\scripts\start.ps1 -IncludeFrontend`
 - **Mac/Linux:** `python scripts/start_all.py --frontend`
 
-Then open **http://localhost:5173** (run `cd frontend && npm install && npm run dev` first if you didn’t use the frontend flag). 
+Then open **http://localhost:5173**. To ingest a run and verify the flow, see [docs/TESTING.md](docs/TESTING.md).
 
-**Deploy online:** Connect [GitHub repo](https://github.com/areeb24111/Ai-Agent-flight-recorder) to [Render](https://render.com) (Blueprint from `render.yaml`) or use **[docs/DEPLOY.md](docs/DEPLOY.md)** for Railway, Google Cloud Run, and combined API + dashboard.  
-**Live demo:** [Dashboard](https://ai-agent-flight-recorder.onrender.com) · [API](https://agent-flight-recorder-api.onrender.com) · [API docs (OpenAPI)](https://agent-flight-recorder-api.onrender.com/docs)
+### Manual run (four terminals)
 
-**How do other people check their agents on my deployment?** They point their agent at your API URL, send each run via `POST /api/v1/runs` (or your SDK), then open your dashboard to see runs and failures. See **[docs/HOW_OTHERS_USE_IT.md](docs/HOW_OTHERS_USE_IT.md)** for the exact steps and what to share with them (dashboard URL, API URL, optional API key).
+1. **API:** `cd backend && uvicorn app.main:app --reload --port 8000`
+2. **Failure worker:** `cd backend && python -m app.worker_failures`
+3. **Simulation worker:** `cd backend && python -m app.worker_simulations`
+4. **Frontend:** `cd frontend && npm run dev`
+5. **Optional demo agent:** `cd backend && uvicorn simple_agent_api:app --port 8001`
+
+### Ingest a run
+
+- **SDK:** See `backend/send_test_run.py` and `backend/sdk_flight_recorder.py`.
+- **curl:**
+  ```bash
+  curl -X POST http://127.0.0.1:8000/api/v1/runs \
+    -H "Content-Type: application/json" \
+    -d '{"agent_id":"my-agent","user_query":"What is 2+2?","final_answer":"4","latency_ms":100,"steps":[]}'
+  ```
+- If the API requires an API key: add `-H "X-API-Key: YOUR_API_KEY"`.
+
+**Deploy online:** See [docs/DEPLOY.md](docs/DEPLOY.md) for Render, Railway, or Google Cloud Run.  
+**Share with others:** See [docs/HOW_OTHERS_USE_IT.md](docs/HOW_OTHERS_USE_IT.md) for how others use your deployment to check their agents.
+
+---
+
+## Simulation Testing
+
+Create simulation jobs that call your agent endpoint repeatedly and record each run:
+
+1. In the dashboard, use the **Simulations** section: set name, agent endpoint (e.g. `http://127.0.0.1:8001/agent` for the demo agent), task template (e.g. `math_qa`, `doc_qa`, or **custom** with your own prompt), and number of runs.
+2. Click **Create simulation**. The simulation worker will POST each task to your agent; runs appear under **Recent runs**. Filter by simulation via **View runs**.
+3. **API:** `POST /api/v1/simulations` with `name`, `agent_endpoint`, `task_template`, `num_runs`, and optionally `template_config: { "query": "..." }` for a custom prompt or `dataset_id` for a task dataset.
+
+Metrics shown: total runs, completed, success %, hallucination %, tool error %, avg latency. See [docs/RUNBOOK.md](docs/RUNBOOK.md) for more detail.
+
+---
+
+## Roadmap
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the 2–4 week evolution plan (trace timeline UI, failure badges, clustering, optional Postgres + pgvector). Current status and ideas are in [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md).
+
+---
 
 ## API summary
 
@@ -60,51 +165,27 @@ Then open **http://localhost:5173** (run `cd frontend && npm install && npm run 
 |--------|------|------|-------------|
 | GET | `/health` | no | Liveness |
 | POST | `/api/v1/runs` | if `API_KEY` set | Ingest run + steps |
-| GET | `/api/v1/runs` | no | List runs (optional `simulation_id`, `agent_id`, `date_from`, `date_to`, `offset`, `limit`) |
-| GET | `/api/v1/runs/agents` | no | List distinct agent IDs for filters |
-| GET | `/api/v1/runs/export?format=csv\|json` | no | Export runs (optional filters) |
+| GET | `/api/v1/runs` | no | List runs (filters: simulation_id, agent_id, date_from, date_to, offset, limit) |
+| GET | `/api/v1/runs/agents` | no | List distinct agent IDs |
+| GET | `/api/v1/runs/export?format=csv\|json` | no | Export runs |
 | GET | `/api/v1/runs/{id}` | no | Run detail + failures |
-| POST | `/api/v1/simulations` | if `API_KEY` set | Create simulation (optional `template_config: { query, env }` for custom prompt) |
+| POST | `/api/v1/simulations` | if `API_KEY` set | Create simulation (optional `template_config`, `dataset_id`) |
 | GET | `/api/v1/simulations` | no | List simulations |
-| GET | `/api/v1/analytics/runs_summary?days=N&by_detector=true` | no | Runs/day, hallucination rate; optional per-detector failure rates and avg_latency_ms |
-| GET | `/api/v1/detectors` | no | List detector IDs and default thresholds |
-| POST | `/api/v1/datasets` | if `API_KEY` set | Create task dataset (name + tasks) |
-| GET | `/api/v1/datasets` | no | List task datasets |
-| GET | `/api/v1/datasets/{id}` | no | Get dataset by id (full payload) |
-| GET | `/api/v1/failure_patterns?days=N&detector=X` | no | Failure patterns (grouped by detector + explanation) |
-| GET | `/api/v1/failure_clusters?days=N&detector=X` | no | Failure clusters (grouped similar failures; text-based; embedding-based when Postgres + pgvector) |
+| GET | `/api/v1/analytics/runs_summary?days=N&by_detector=true` | no | Runs/day, rates, avg_latency_ms |
+| GET | `/api/v1/detectors` | no | List detectors and default thresholds |
+| POST | `/api/v1/datasets` | if `API_KEY` set | Create task dataset |
+| GET | `/api/v1/datasets` | no | List datasets |
+| GET | `/api/v1/failure_patterns?days=N` | no | Failure patterns by detector + explanation |
+| GET | `/api/v1/failure_clusters?days=N` | no | Failure clusters (text-based; pgvector later) |
 
-## SDK examples
+---
 
-**Python (record a run):**
+## Contributing
 
-```python
-# See backend/sdk_flight_recorder.py and backend/send_test_run.py
-import requests
-RUNS_URL = "http://127.0.0.1:8000/api/v1/runs"
-resp = requests.post(RUNS_URL, json={
-    "agent_id": "my-agent",
-    "user_query": "What is 2+2?",
-    "final_answer": "4",
-    "latency_ms": 120,
-    "steps": [{"idx": 0, "step_type": "reasoning", "request": {}, "response": {"thought": "2+2=4"}}],
-})
-print(resp.json())  # {"run_id": "..."}
-```
+Contributions are welcome: open an issue or submit a pull request. For larger changes, open an issue first to align on design.
 
-**curl (ingest + list):**
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/runs \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id":"curl-agent","user_query":"Hi","final_answer":"Hello","latency_ms":50,"steps":[]}'
-curl "http://127.0.0.1:8000/api/v1/runs?limit=10"
-```
-
-## Publish & share
-
-To put the project on **GitHub** and promote it on **LinkedIn**, see **[docs/PUBLISH_AND_MARKET.md](docs/PUBLISH_AND_MARKET.md)** (repo setup, push steps, and post ideas). No pricing or paid tiers for now.
+---
 
 ## License
 
-Proprietary / adjust as needed.
+Proprietary — adjust as needed for your use.

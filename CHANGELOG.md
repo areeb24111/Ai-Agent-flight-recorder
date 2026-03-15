@@ -2,6 +2,25 @@
 
 All notable changes to the Agent Flight Recorder project.
 
+## [1.1.0] – 2026-03
+
+### Added
+
+- **README** – Reformatted with Problem, Solution, Features, Dashboard Screenshot, Architecture, Installation, Usage, Simulation Testing, Roadmap, Contributing, License. Added architecture diagram (docs/architecture.png) and dashboard screenshot placeholders.
+- **Demo script** – `backend/demo_intentional_failures.py` sends 7 runs that intentionally trigger detectors (hallucination, tool misuse, reasoning loop, memory contradiction, planning, kitchen sink). Clear 401 hint when API key is required.
+- **Custom simulation template** – Optional `template_config: { query, env }` for simulations; UI supports "custom" task template with custom query field. Backend and worker use `template_config` when set.
+- **Five failure detectors** – reasoning_loop and memory_contradiction detectors; configurable per-detector thresholds via env (DETECTOR_*_THRESHOLD). Failure worker runs all five and persists only failures above threshold.
+- **Failure clusters API & UI** – `GET /api/v1/failure_clusters` (text-based grouping); dashboard section for failure clusters with 7d/30d filter.
+- **Analytics by detector** – `GET /api/v1/analytics/runs_summary?by_detector=true` returns failure_rate_per_detector per day; dashboard chart for failure rate by detector.
+- **Detectors & datasets API** – `GET /api/v1/detectors`; `POST/GET /api/v1/datasets` and simulations can use `dataset_id` for task datasets.
+- **Dashboard** – Trace timeline (collapsible steps), detector badges on run list, failure pills by severity, simulation "View runs" button, dark mode only, copy curl in run detail. Responsive layout.
+- **Docs** – DEMO.md, TESTING.md §5 (intentional failures), HOW_OTHERS_USE_IT.md; DEPLOY workers section; ROADMAP.md.
+
+### Changed
+
+- Runs list includes `failure_detectors` (list of detector names that fired). Simulation model has `template_config` and `dataset_id`; worker uses template_config for custom prompt and dataset for tasks.
+- SQLite migrations in `app.db.base.run_sqlite_migrations()` (template_config, dataset_id, etc.) run on API and worker startup.
+
 ## [1.0.0] – 2025-03
 
 ### Added
@@ -27,4 +46,4 @@ All notable changes to the Agent Flight Recorder project.
 
 ## [Unreleased]
 
-- See [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md) for planned work.
+- See docs/IMPROVEMENTS.md for planned work.
