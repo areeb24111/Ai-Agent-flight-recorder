@@ -4,6 +4,27 @@ Single-host deployment so the dashboard and API are reachable on the internet. T
 
 ---
 
+## Quick deploy (Render)
+
+1. Push your repo to GitHub (see **Push to GitHub** below if you need to fix auth).
+2. Go to [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**.
+3. Connect the repo `https://github.com/areeb24111/Ai-Agent-flight-recorder`.
+4. Render will read `render.yaml`: it creates a **Web Service** (the API) and can create a **Postgres** DB. Confirm and deploy.
+5. In the service **Environment** tab, set `OPENAI_API_KEY` (and optionally adjust `API_KEY`). For **CORS** (if you add a frontend on another URL later), set `CORS_ORIGINS` to that URL.
+6. After deploy, your API is at `https://agent-flight-recorder-api.onrender.com` (or the URL Render shows). Use it as `VITE_API_BASE` when building the frontend, or add a **Static Site** on Render that points to this API.
+
+**Push to GitHub (if you get “Authentication failed”):** GitHub no longer accepts account passwords over HTTPS. Use a **Personal Access Token (PAT)**: GitHub → Settings → Developer settings → Personal access tokens → Generate (classic), scope `repo`. Then run:
+
+```bash
+cd "c:\Users\areeb\Agent failure analysis"
+git remote set-url origin https://YOUR_USERNAME:YOUR_PAT@github.com/areeb24111/Ai-Agent-flight-recorder.git
+git push -u origin main
+```
+
+Or use **SSH**: add an SSH key to GitHub and set `git remote set-url origin git@github.com:areeb24111/Ai-Agent-flight-recorder.git`, then `git push -u origin main`.
+
+---
+
 ## 1. Environment variables (backend)
 
 Set these on your host or in your platform’s dashboard. Never commit real values.

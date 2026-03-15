@@ -1,0 +1,16 @@
+# Render Blueprint: Agent Flight Recorder
+# Connect this repo at dashboard.render.com → New → Blueprint. Add OPENAI_API_KEY (and optional API_KEY) in the service Environment.
+services:
+  - type: web
+    name: agent-flight-recorder-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: API_KEY
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+    healthCheckPath: /health
+# Optional: add a Postgres database in Render and set DATABASE_URL in the web service env (otherwise the app uses SQLite; data is ephemeral on free tier).
