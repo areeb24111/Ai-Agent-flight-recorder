@@ -41,7 +41,7 @@ From the **repo root**, one command starts the backend (API + workers + demo age
 - **Windows:** `.\scripts\start.ps1 -IncludeFrontend`
 - **Mac/Linux:** `python scripts/start_all.py --frontend`
 
-Then open **http://localhost:5173** (run `cd frontend && npm install && npm run dev` first if you didn’t use the frontend flag). See **[docs/RUNBOOK.md](docs/RUNBOOK.md)** for env setup.
+Then open **http://localhost:5173** (run `cd frontend && npm install && npm run dev` first if you didn’t use the frontend flag). 
 
 **Deploy online:** Connect [GitHub repo](https://github.com/areeb24111/Ai-Agent-flight-recorder) to [Render](https://render.com) (Blueprint from `render.yaml`) or use **[docs/DEPLOY.md](docs/DEPLOY.md)** for Railway, Google Cloud Run, and combined API + dashboard.
 
@@ -58,9 +58,6 @@ Then open **http://localhost:5173** (run `cd frontend && npm install && npm run 
 | GET | `/api/v1/analytics/runs_summary?days=N` | no | Runs/day + hallucination rate |
 | GET | `/api/v1/failure_patterns?days=N&detector=X` | no | Failure patterns (grouped by detector + explanation) |
 
-## Publish & share
-
-To put the project on **GitHub** and promote it on **LinkedIn**, see **[docs/PUBLISH_AND_MARKET.md](docs/PUBLISH_AND_MARKET.md)** (repo setup, push steps, and post ideas). No pricing or paid tiers for now.
 
 ## License
 
