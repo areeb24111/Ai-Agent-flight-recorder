@@ -66,12 +66,15 @@ type FailurePattern = {
   example_run_ids: string[]
 }
 
-// Use build-time API URL, or when on the live Render dashboard host, point to the Render API (so the site works even if VITE_API_BASE wasn't set).
+// Use build-time API URL, or same-origin when dashboard is served from the API host (combined deploy), or fallback for old static site.
 function getApiBase(): string {
   const build = import.meta.env.VITE_API_BASE
   if (build !== undefined && build !== '') return build as string
-  if (typeof window !== 'undefined' && window.location.hostname === 'ai-agent-flight-recorder.onrender.com')
-    return 'https://agent-flight-recorder-api.onrender.com'
+  if (typeof window !== 'undefined') {
+    const h = window.location.hostname
+    if (h === 'ai-agent-flight-recorder-api.onrender.com') return '' // combined deploy: dashboard and API same origin
+    if (h === 'ai-agent-flight-recorder.onrender.com') return 'https://agent-flight-recorder-api.onrender.com'
+  }
   return 'http://127.0.0.1:8000'
 }
 const API_BASE = getApiBase()
