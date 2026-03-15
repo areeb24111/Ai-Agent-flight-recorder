@@ -179,26 +179,6 @@ Planned: trace timeline UI, failure badges, embedding-based clustering, optional
 
 ---
 
-## Adding screenshots
-
-To show dashboard and architecture images on GitHub:
-
-1. Create an **`assets`** folder in the repo root (same level as `README.md`).
-2. Add your image files with these names:
-   - `screenshot-overview.png` — metrics + recent runs + run detail
-   - `screenshot-analytics.png` — analytics chart + failure patterns
-   - `screenshot-simulations.png` — failure clusters + simulations list
-   - `architecture.png` — architecture diagram
-3. Commit and push:
-   ```bash
-   git add assets/
-   git commit -m "docs: add dashboard and architecture screenshots"
-   git push origin main
-   ```
-   The README already links to `assets/screenshot-overview.png`, `assets/screenshot-analytics.png`, `assets/screenshot-simulations.png`, and `assets/architecture.png`, so they will appear automatically.
-
----
-
 ## Contributing
 
 Contributions are welcome: open an issue or submit a pull request. For larger changes, open an issue first to align on design.
