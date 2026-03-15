@@ -14,7 +14,6 @@ All notable changes to the Agent Flight Recorder project.
 - **Analytics by detector** – `GET /api/v1/analytics/runs_summary?by_detector=true` returns failure_rate_per_detector per day; dashboard chart for failure rate by detector.
 - **Detectors & datasets API** – `GET /api/v1/detectors`; `POST/GET /api/v1/datasets` and simulations can use `dataset_id` for task datasets.
 - **Dashboard** – Trace timeline (collapsible steps), detector badges on run list, failure pills by severity, simulation "View runs" button, dark mode only, copy curl in run detail. Responsive layout.
-- **Docs** – DEMO.md, TESTING.md §5 (intentional failures), HOW_OTHERS_USE_IT.md; DEPLOY workers section; ROADMAP.md.
 
 ### Changed
 
