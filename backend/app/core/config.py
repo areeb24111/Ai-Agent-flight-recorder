@@ -29,5 +29,13 @@ class Settings(BaseSettings):
     webhook_url: str | None = Field(default=None, validation_alias="WEBHOOK_URL")
     webhook_threshold: int = Field(default=80, validation_alias="WEBHOOK_THRESHOLD")
 
+    # Optional per-detector thresholds (0-100). If set, only persist a Failure when score >= threshold.
+    # Unset = persist all. E.g. DETECTOR_HALLUCINATION_THRESHOLD=80
+    detector_hallucination_threshold: int | None = Field(default=None, validation_alias="DETECTOR_HALLUCINATION_THRESHOLD")
+    detector_planning_failure_threshold: int | None = Field(default=None, validation_alias="DETECTOR_PLANNING_FAILURE_THRESHOLD")
+    detector_tool_misuse_threshold: int | None = Field(default=None, validation_alias="DETECTOR_TOOL_MISUSE_THRESHOLD")
+    detector_reasoning_loop_threshold: int | None = Field(default=None, validation_alias="DETECTOR_REASONING_LOOP_THRESHOLD")
+    detector_memory_contradiction_threshold: int | None = Field(default=None, validation_alias="DETECTOR_MEMORY_CONTRADICTION_THRESHOLD")
+
 
 settings = Settings()

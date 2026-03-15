@@ -28,4 +28,11 @@ class SimulationCreate(BaseModel):
     agent_endpoint: str
     task_template: str = "math_qa"
     num_runs: int = 10
+    dataset_id: Optional[str] = None
+    template_config: Optional[Dict[str, Any]] = None  # for custom template: {"query": "...", "env": {...}}
+
+
+class TaskDatasetCreate(BaseModel):
+    name: str
+    tasks: List[Dict[str, Any]]  # [{"query": "...", "env": {...}}, ...]
 

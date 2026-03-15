@@ -9,7 +9,7 @@ from starlette.staticfiles import StaticFiles
 
 from app.db.base import Base, engine
 import app.db.models  # noqa: F401
-from app.routes import runs, simulations, analytics, failure_patterns
+from app.routes import runs, simulations, analytics, failure_patterns, failure_clusters, detectors, datasets
 
 
 from app.core.config import settings as app_settings
@@ -42,23 +42,8 @@ app.add_middleware(
 def on_startup() -> None:
     # Ensure tables exist (SQLite or Postgres) when the API starts.
     Base.metadata.create_all(bind=engine)
-    # SQLite: add simulation_id to runs if missing (e.g. old DB created before this column).
-    if "sqlite" in str(engine.url):
-        with engine.connect() as conn:
-            try:
-                r = conn.execute(
-                    __import__("sqlalchemy").text("PRAGMA table_info(runs)")
-                )
-                cols = [row[1] for row in r]
-                if "simulation_id" not in cols:
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "ALTER TABLE runs ADD COLUMN simulation_id VARCHAR(36)"
-                        )
-                    )
-                    conn.commit()
-            except Exception:
-                pass
+    from app.db.base import run_sqlite_migrations
+    run_sqlite_migrations()
 
 
 @app.exception_handler(RequestValidationError)
@@ -111,6 +96,9 @@ app.include_router(runs.router)
 app.include_router(simulations.router)
 app.include_router(analytics.router)
 app.include_router(failure_patterns.router)
+app.include_router(failure_clusters.router)
+app.include_router(detectors.router)
+app.include_router(datasets.router)
 
 # Optional: serve frontend for single-host deploy (set STATIC_DIR to e.g. ./static).
 if app_settings.static_dir:

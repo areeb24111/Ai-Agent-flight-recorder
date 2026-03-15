@@ -28,6 +28,58 @@ Or use **SSH**: add an SSH key to GitHub and set `git remote set-url origin git@
 
 ---
 
+## Two services: API vs dashboard
+
+**Yes, they are different.** The Blueprint (`render.yaml`) defines **two** services:
+
+| Service | Type | Purpose |
+|--------|------|--------|
+| **agent-flight-recorder-api** | Web Service (Python) | Backend: stores runs, runs failure detection, serves `/api/v1/*` and `/health`. |
+| **agent-flight-recorder-dashboard** | Static Site | Frontend: the React dashboard you see in the browser. It *calls* the API to load runs and analytics. |
+
+If you only see **one** project (e.g. only “Ai-Agent-flight-recorder” as a Static Site), the **API service was never created**. That’s why the dashboard shows “Failed to fetch”: there is no backend to talk to.
+
+**What to do:**
+
+1. **Use the Blueprint (recommended):** In Render go to **Dashboard** → **New** → **Blueprint**. Connect the same repo and select `render.yaml`. Render will create **both** services (API + dashboard). You can delete the old single static site if you created it separately.
+2. **Or add the API manually:** **New** → **Web Service** → connect the repo, set **Root Directory** to `backend`, **Build** to `pip install -r requirements.txt`, **Start** to `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Add env vars (e.g. `OPENAI_API_KEY`). Then set the dashboard’s `VITE_API_BASE` to this new API URL and redeploy the dashboard.
+
+After both are deployed, the dashboard URL (e.g. `https://ai-agent-flight-recorder.onrender.com`) will call the API URL (e.g. `https://agent-flight-recorder-api.onrender.com`) and the “Failed to fetch” error should go away.
+
+---
+
+## Free tier on Render (no Blueprint)
+
+If the Blueprint is not available or you want to avoid it, use the free tier in one of these ways.
+
+**Option 1: Two free services (manual)**  
+Create two services by hand. Render free tier usually allows 1 Web Service and 1 Static Site.
+
+- **API:** New → Web Service. Repo, Root Directory `backend`, Build `pip install -r requirements.txt`, Start `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Add env `OPENAI_API_KEY`. Deploy and copy the service URL.
+- **Dashboard:** New → Static Site. Same repo, Build `cd frontend && npm install && npm run build`, Publish `frontend/dist`. Environment: `VITE_API_BASE` = your API URL (no trailing slash). Deploy.
+
+**Option 2: One free service (API + dashboard together)**  
+
+One Web Service serves both the API and the dashboard. Follow these steps:
+
+1. In Render go to **Dashboard** → **New** → **Web Service**.
+2. Connect your GitHub repo (`areeb24111/Ai-Agent-flight-recorder` or your fork), branch **main**.
+3. **Name:** e.g. `agent-flight-recorder`.
+4. **Root Directory:** `backend`
+5. **Build Command:**  
+   `pip install -r requirements.txt && cd ../frontend && npm install && VITE_API_BASE= npm run build && cp -r dist ../backend/static`
+6. **Start Command:**  
+   `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+7. **Environment variables** (Add in the Render Environment tab):
+   - `STATIC_DIR` = `./static`
+   - `OPENAI_API_KEY` = your OpenAI key (for failure detectors)
+   - `API_KEY` = leave blank for open access, or set a secret to protect ingest/simulation endpoints
+8. Click **Create Web Service** and wait for the first deploy.
+
+When it is live, one URL does everything: **/** shows the dashboard, **/api/v1/...** is the API, **/health** is the health check. No second service and no Blueprint. Reference: `render-one-service.yaml` in the repo.
+
+---
+
 ## 1. Environment variables (backend)
 
 Set these on your host or in your platform’s dashboard. Never commit real values.
@@ -42,7 +94,68 @@ Set these on your host or in your platform’s dashboard. Never commit real valu
 | `WEBHOOK_URL` | Optional | HTTP POST when a run has failure score ≥ `WEBHOOK_THRESHOLD`. |
 | `WEBHOOK_THRESHOLD` | Optional (default 80) | Score 0–100; triggers webhook when any detector exceeds it. |
 
-**Workers in the cloud:** For failure detection and simulations to run in production, run `worker_failures` and `worker_simulations` as separate processes (e.g. Render background workers, or separate services). Point them at the same `DATABASE_URL` and `OPENAI_API_KEY`. The API only stores runs; the workers process them asynchronously.
+**Workers in the cloud:** For failure detection and simulations to run in production, run `worker_failures` and `worker_simulations` as separate processes (e.g. Render background workers, or separate services). Point them at the same `DATABASE_URL` and `OPENAI_API_KEY`. The API only stores runs; the workers process them asynchronously. See **§ Workers in the cloud** below for step-by-step setup.
+
+---
+
+## Workers in the cloud (step-by-step)
+
+To run the failure-detection and simulation workers in production so that runs get processed and simulations execute without your laptop:
+
+### Option A: Same host as the API (e.g. one Render Web Service)
+
+Run the API and both workers in one process using a process manager, or run them as separate **background** processes started by your start command.
+
+**Using a shell script (Linux/macOS):**
+
+```bash
+# start.sh – run API and workers (same machine)
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} &
+python -m app.worker_failures &
+python -m app.worker_simulations &
+wait
+```
+
+Then set **Start Command** to `./start.sh` (and ensure the script is executable). All three share the same env (`DATABASE_URL`, `OPENAI_API_KEY`, etc.).
+
+**Using Python only (cross-platform):**
+
+You can start uvicorn and the two workers in one Python process (e.g. with `asyncio` and threading), but the simplest production approach is **Option B**.
+
+### Option B: Separate worker services (Render, Railway, Fly, etc.)
+
+Create **two extra services** that run only the workers and point at the same database and env as the API.
+
+1. **Worker 1 – Failure detection**
+   - **New** → **Background Worker** (or **Web Service** that runs a one-off command; some platforms call it “Cron” or “Worker”).
+   - Repo: same as API. **Root Directory:** `backend`.
+   - **Build:** `pip install -r requirements.txt`
+   - **Start / Command:** `python -m app.worker_failures`
+   - **Environment:** Same as API: `DATABASE_URL` (e.g. Render Postgres internal URL), `OPENAI_API_KEY`, optional `API_KEY`, `WEBHOOK_URL`, etc.
+   - No `PORT` or HTTP needed; the process just polls the DB.
+
+2. **Worker 2 – Simulations**
+   - Same idea: **New** → **Background Worker**.
+   - Repo and Root Directory: `backend`.
+   - **Build:** `pip install -r requirements.txt`
+   - **Start / Command:** `python -m app.worker_simulations`
+   - **Environment:** Same `DATABASE_URL` as API (and optional `API_KEY`). No `OPENAI_API_KEY` required for this worker.
+
+3. **Database:** If the API uses **Render Postgres**, copy the **Internal Database URL** from the Render dashboard and set it as `DATABASE_URL` on the API and on **both** workers. All three must use the same URL.
+
+4. **Result:** The API ingests runs and serves the dashboard; `worker_failures` marks runs as processed and writes failures; `worker_simulations` picks up pending simulations and POSTs to agent endpoints, then updates metrics.
+
+### Option C: Render “Background Worker” type
+
+On Render, **New** → **Background Worker** lets you attach the same repo and set **Start Command** to `python -m app.worker_failures` (or `worker_simulations`). Add the same env vars as the API (especially `DATABASE_URL` and `OPENAI_API_KEY` for the failures worker). Create two background workers, one per script.
+
+### Checklist
+
+- [ ] `DATABASE_URL` is identical on API and both workers (e.g. Render Postgres internal URL).
+- [ ] `OPENAI_API_KEY` is set on the **failure** worker so detectors can run.
+- [ ] Workers have no `PORT` binding; they only poll the DB and (for simulations) call agent endpoints.
+- [ ] If the API uses `API_KEY`, you do not need to set it on workers unless a worker calls your own API (e.g. for ingest); simulations worker only POSTs to the **agent** URL.
 
 ---
 

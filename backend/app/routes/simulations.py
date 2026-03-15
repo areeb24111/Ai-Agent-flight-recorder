@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -6,7 +8,6 @@ from app.deps.rate_limit import rate_limit_simulations
 from app.db.base import get_session
 from app.db.models import Simulation
 from app.schemas import SimulationCreate
-
 
 router = APIRouter(prefix="/api/v1/simulations", tags=["simulations"])
 
@@ -18,6 +19,12 @@ async def create_simulation(
     _limit: None = Depends(rate_limit_simulations),
     db: Session = Depends(get_session),
 ) -> dict:
+    dataset_id = None
+    if payload.dataset_id:
+        try:
+            dataset_id = UUID(payload.dataset_id)
+        except ValueError:
+            pass
     sim = Simulation(
         name=payload.name,
         agent_endpoint=payload.agent_endpoint,
@@ -25,6 +32,8 @@ async def create_simulation(
         num_runs=payload.num_runs,
         status="pending",
         metrics={"total_runs": 0, "success": 0, "hallucinations": 0},
+        dataset_id=dataset_id,
+        template_config=payload.template_config,
     )
     db.add(sim)
     db.commit()
@@ -45,6 +54,8 @@ async def list_simulations(db: Session = Depends(get_session)) -> list[dict]:
             "num_runs": s.num_runs,
             "status": s.status,
             "metrics": s.metrics or {},
+            "dataset_id": str(s.dataset_id) if s.dataset_id else None,
+            "template_config": s.template_config,
         }
         for s in sims
     ]
@@ -52,7 +63,11 @@ async def list_simulations(db: Session = Depends(get_session)) -> list[dict]:
 
 @router.get("/{sim_id}")
 async def get_simulation(sim_id: str, db: Session = Depends(get_session)) -> dict:
-    sim = db.query(Simulation).filter(Simulation.id == sim_id).first()
+    try:
+        uid = UUID(sim_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="simulation_not_found")
+    sim = db.query(Simulation).filter(Simulation.id == uid).first()
     if not sim:
         raise HTTPException(status_code=404, detail="simulation_not_found")
     return {
@@ -64,5 +79,7 @@ async def get_simulation(sim_id: str, db: Session = Depends(get_session)) -> dic
         "num_runs": sim.num_runs,
         "status": sim.status,
         "metrics": sim.metrics or {},
+        "dataset_id": str(sim.dataset_id) if sim.dataset_id else None,
+        "template_config": sim.template_config,
     }
 

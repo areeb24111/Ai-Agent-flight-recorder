@@ -99,14 +99,26 @@ async def list_runs(
     runs = q.all()
     run_ids = [r.id for r in runs]
     failure_counts = {}
+    failure_detectors: dict[UUID, list[str]] = {rid: [] for rid in run_ids}
     if run_ids:
-        rows = (
+        count_rows = (
             db.query(Failure.run_id, func.count(Failure.id).label("n"))
             .filter(Failure.run_id.in_(run_ids))
             .group_by(Failure.run_id)
             .all()
         )
-        failure_counts = {r.run_id: r.n for r in rows}
+        failure_counts = {r.run_id: r.n for r in count_rows}
+        det_rows = (
+            db.query(Failure.run_id, Failure.detector)
+            .filter(Failure.run_id.in_(run_ids), Failure.detector != "overall")
+            .distinct()
+            .all()
+        )
+        for row in det_rows:
+            if row.run_id not in failure_detectors:
+                failure_detectors[row.run_id] = []
+            if row.detector and row.detector not in failure_detectors[row.run_id]:
+                failure_detectors[row.run_id].append(row.detector)
     return [
         {
             "id": str(r.id),
@@ -117,6 +129,7 @@ async def list_runs(
             "status": r.status,
             "user_query": (r.input or {}).get("user_query", "")[:120] or None,
             "failure_count": failure_counts.get(r.id, 0),
+            "failure_detectors": failure_detectors.get(r.id, []),
         }
         for r in runs
     ]

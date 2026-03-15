@@ -10,7 +10,9 @@ from app.core.config import settings as app_settings
 from app.db.base import SessionLocal
 from app.db.models import Failure, Run, Step
 from app.detectors.hallucination import detect_hallucination
+from app.detectors.memory_contradiction import detect_memory_contradiction
 from app.detectors.planning import detect_planning_failure
+from app.detectors.reasoning_loop import detect_reasoning_loop
 from app.detectors.tool_misuse import detect_tool_misuse
 
 
@@ -54,6 +56,8 @@ async def process_run(db: Session, run: Run) -> None:
         failures.extend(await _with_retry(lambda: detect_hallucination(run_dict)))
         failures.extend(await _with_retry(lambda: detect_planning_failure(run_dict)))
         failures.extend(await _with_retry(lambda: detect_tool_misuse(run_dict)))
+        failures.extend(await _with_retry(lambda: detect_reasoning_loop(run_dict)))
+        failures.extend(await _with_retry(lambda: detect_memory_contradiction(run_dict)))
     except Exception:
         pass
 
@@ -63,11 +67,15 @@ async def process_run(db: Session, run: Run) -> None:
         det = f.get("detector")
         risk = f.get("score") or 0
         if det == "hallucination":
-            overall_score -= int(risk * 0.4)
+            overall_score -= int(risk * 0.35)
         elif det == "planning_failure":
-            overall_score -= int(risk * 0.3)
+            overall_score -= int(risk * 0.25)
         elif det == "tool_misuse":
             overall_score -= int(risk * 0.2)
+        elif det == "reasoning_loop":
+            overall_score -= int(risk * 0.1)
+        elif det == "memory_contradiction":
+            overall_score -= int(risk * 0.1)
     overall_score = max(0, min(100, overall_score))
 
     if failures:
@@ -81,7 +89,24 @@ async def process_run(db: Session, run: Run) -> None:
             }
         )
 
+    def _threshold_for(detector: str) -> int | None:
+        m = {
+            "hallucination": app_settings.detector_hallucination_threshold,
+            "planning_failure": app_settings.detector_planning_failure_threshold,
+            "tool_misuse": app_settings.detector_tool_misuse_threshold,
+            "reasoning_loop": app_settings.detector_reasoning_loop_threshold,
+            "memory_contradiction": app_settings.detector_memory_contradiction_threshold,
+        }
+        return m.get(detector)
+
     for f in failures:
+        det = f.get("detector")
+        if det and det != "overall":
+            th = _threshold_for(det)
+            if th is not None:
+                score = f.get("score")
+                if score is None or score < th:
+                    continue
         db.add(
             Failure(
                 run_id=run.id,
@@ -137,6 +162,8 @@ async def process_pending_runs_once(batch_size: int = 20) -> None:
 
 
 async def main_loop(poll_interval_seconds: int = 10) -> None:
+    from app.db.base import run_sqlite_migrations
+    run_sqlite_migrations()
     while True:
         await process_pending_runs_once()
         await asyncio.sleep(poll_interval_seconds)

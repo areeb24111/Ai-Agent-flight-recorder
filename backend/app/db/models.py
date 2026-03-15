@@ -54,6 +54,19 @@ class Failure(Base):
     extra = Column(JSON, nullable=True)
 
 
+class TaskDataset(Base):
+    """
+    Named set of tasks for simulation runs. payload.tasks = list of {query, env}.
+    Optional: when simulation.dataset_id is set, worker uses these tasks instead of generate_task.
+    """
+    __tablename__ = "task_datasets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    name = Column(String, nullable=False, index=True)
+    payload = Column(JSON, nullable=False)  # {"tasks": [{"query": "...", "env": {...}}, ...]}
+
+
 class Simulation(Base):
     __tablename__ = "simulations"
 
@@ -65,4 +78,6 @@ class Simulation(Base):
     num_runs = Column(Integer, nullable=False)
     status = Column(String, default="pending", nullable=False)  # pending, running, completed, failed
     metrics = Column(JSON, nullable=True)
+    dataset_id = Column(UUID(as_uuid=True), ForeignKey("task_datasets.id"), nullable=True, index=True)
+    template_config = Column(JSON, nullable=True)  # optional {"query": "...", "env": {...}} for custom template
 

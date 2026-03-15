@@ -1,6 +1,6 @@
 # Failure patterns (design)
 
-Lightweight grouping of similar failures without embeddings yet. Implement this when you add the “Patterns” surface; later replace with embedding-based clustering (e.g. pgvector).
+Lightweight grouping of similar failures without embeddings. The failure patterns API and UI are implemented (GET /api/v1/failure_patterns). **Evolution:** Embedding-based clustering (pgvector, run_embeddings, failure_clusters) is in the [ROADMAP](ROADMAP.md) (week 4 or post-MVP); see also [postgres_schema.md](postgres_schema.md).
 
 ---
 

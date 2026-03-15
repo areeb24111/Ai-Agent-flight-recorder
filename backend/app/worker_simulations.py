@@ -18,7 +18,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.db.base import SessionLocal
-from app.db.models import Simulation, Run, Failure
+from app.db.models import Simulation, Run, Failure, TaskDataset
 
 
 def generate_task(template: str) -> Dict[str, Any]:
@@ -56,34 +56,87 @@ async def _post_with_retry(client: httpx.AsyncClient, url: str, json: dict, max_
     return False
 
 
+def _get_tasks_for_simulation(db: Session, sim: Simulation) -> list[Dict[str, Any]]:
+    """Return list of task payloads (query + env) for this simulation."""
+    if sim.dataset_id:
+        ds = db.query(TaskDataset).filter(TaskDataset.id == sim.dataset_id).first()
+        if ds and ds.payload and isinstance(ds.payload.get("tasks"), list):
+            tasks = []
+            for t in ds.payload["tasks"][: sim.num_runs]:
+                if isinstance(t, dict) and t.get("query"):
+                    env = dict(t.get("env") or {})
+                    env["simulation_id"] = str(sim.id)
+                    tasks.append({"query": t["query"], "env": env})
+            if tasks:
+                return tasks
+    # Custom template: use template_config.query (repeated num_runs times)
+    if sim.template_config and isinstance(sim.template_config, dict) and sim.template_config.get("query"):
+        q = str(sim.template_config["query"]).strip()
+        if q:
+            env = dict(sim.template_config.get("env") or {})
+            env["simulation_id"] = str(sim.id)
+            env["task_type"] = "custom"
+            return [{"query": q, "env": env} for _ in range(sim.num_runs)]
+    # Fallback: use task_template
+    out = []
+    for _ in range(sim.num_runs):
+        g = generate_task(sim.task_template)
+        env = dict(g.get("env") or {})
+        env["simulation_id"] = str(sim.id)
+        out.append({"query": g.get("query", ""), "env": env})
+    return out
+
+
 async def run_simulation_once(db: Session, sim: Simulation) -> None:
-    async with httpx.AsyncClient(timeout=30) as client:
+    tasks = _get_tasks_for_simulation(db, sim)
+    if not tasks:
+        # Ensure we have at least num_runs from template
         for _ in range(sim.num_runs):
             payload = generate_task(sim.task_template)
+            payload.setdefault("env", {})["simulation_id"] = str(sim.id)
+            tasks.append(payload)
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        for payload in tasks:
+            if "env" not in payload:
+                payload["env"] = {}
             payload["env"]["simulation_id"] = str(sim.id)
             await _post_with_retry(client, sim.agent_endpoint, payload)
 
-    # Recompute metrics: total_runs = runs linked via simulation_id; success_rate = % with
-    # status "success"; hallucination_rate = % of runs with at least one hallucination failure.
+    # Recompute metrics: total_runs, success_rate, hallucination_rate, tool_error_rate, avg_latency_ms.
     runs = db.query(Run).filter(Run.simulation_id == sim.id).all()
     total = len(runs)
+    run_ids = [r.id for r in runs]
     if total == 0:
-        sim.metrics = {"total_runs": 0, "success_rate": 0, "hallucination_rate": 0, "avg_latency_ms": None}
+        sim.metrics = {
+            "total_runs": 0,
+            "success": 0,
+            "success_rate": 0,
+            "hallucination_rate": 0,
+            "tool_error_rate": 0,
+            "avg_latency_ms": None,
+        }
     else:
         successes = sum(1 for r in runs if r.status == "success")
-        avg_latency = int(
-            sum((r.latency_ms or 0) for r in runs) / max(1, total)
-        )
+        avg_latency = int(sum((r.latency_ms or 0) for r in runs) / total)
         hallucinated_run_count = (
             db.query(Failure.run_id)
-            .filter(Failure.run_id.in_([r.id for r in runs]), Failure.detector == "hallucination")
+            .filter(Failure.run_id.in_(run_ids), Failure.detector == "hallucination")
+            .distinct()
+            .count()
+        )
+        tool_error_run_count = (
+            db.query(Failure.run_id)
+            .filter(Failure.run_id.in_(run_ids), Failure.detector == "tool_misuse")
             .distinct()
             .count()
         )
         sim.metrics = {
             "total_runs": total,
+            "success": successes,
             "success_rate": round(100 * successes / total),
             "hallucination_rate": round(100 * hallucinated_run_count / total),
+            "tool_error_rate": round(100 * tool_error_run_count / total),
             "avg_latency_ms": avg_latency,
         }
     sim.status = "completed"
@@ -112,6 +165,8 @@ async def process_pending_simulations_once(batch_size: int = 5) -> None:
 
 
 async def main_loop(poll_interval_seconds: int = 10) -> None:
+    from app.db.base import run_sqlite_migrations
+    run_sqlite_migrations()
     while True:
         await process_pending_simulations_once()
         await asyncio.sleep(poll_interval_seconds)

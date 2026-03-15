@@ -77,7 +77,7 @@ cd backend
 $env:FLIGHT_RECORDER_API_KEY = "your-key"   # if API_KEY is set
 .\.venv\Scripts\uvicorn simple_agent_api:app --host 127.0.0.1 --port 8001
 
-# Terminal 3 – Failure worker (runs detectors)
+# Terminal 3 – Failure worker (runs five detectors: hallucination, planning, tool_misuse, reasoning_loop, memory_contradiction)
 .\.venv\Scripts\python -m app.worker_failures
 
 # Terminal 4 – Simulation worker
@@ -144,9 +144,10 @@ Wait for the simulation worker to process; then refresh the dashboard to see run
 
 ### How to interpret simulations
 
-- **Task templates:** `math_qa` (arithmetic), `doc_qa` (question from a short doc), `multi_turn`, `code_assist`, `generic`. Each run sends one synthetic query to your agent; the agent must include `simulation_id` in its payload to the recorder so runs are linked.
+- **Task templates:** `math_qa` (arithmetic), `doc_qa` (question from a short doc), `multi_turn`, `code_assist`, `generic`. You can also attach a **task dataset** (optional `dataset_id` when creating a simulation); the worker then uses tasks from that dataset instead of generating from the template.
+- **Metrics:** Each simulation stores `total_runs`, `success`, `success_rate`, `hallucination_rate`, `tool_error_rate` (runs with tool_misuse failures), and `avg_latency_ms`.
 - **% success:** Share of runs with `status == "success"`. Failures (e.g. agent timeout or crash) lower this.
-- **% hallucinations:** Share of runs where the hallucination detector recorded a finding. Use Run Detail on individual runs to see scores and explanations.
+- **% hallucinations / tool errors:** Share of runs where the hallucination or tool_misuse detector recorded a finding. Use Run Detail on individual runs to see all five detector scores (hallucination, planning_failure, tool_misuse, reasoning_loop, memory_contradiction).
 - **Filtering:** Click a simulation in the list to show only its runs in Recent Runs; click “Show all runs” to clear the filter.
 
 *(Status badges: later we may show green / yellow / red from thresholds, e.g. green: success ≥ 90% and hallucinations ≤ 5%; red: success &lt; 70% or hallucinations &gt; 20%.)*
@@ -200,6 +201,12 @@ Set to `0` to disable.
 | Dashboard shows "Failed to fetch" or no data | Backend may have exited. Check `backend\logs\api.err.log` and `demo_agent.err.log`. If port 8000 is in use, run the **Clean stop** command above, then start the script again. Ensure `API_KEY` in `backend\.env` is set if you use auth; the start script passes it to the demo agent. |
 | Port 8000 or 8001 already in use | Another process is using the port. Use **Clean stop** to kill Python/uvicorn, or find the process with `Get-NetTCPConnection -LocalPort 8000` (Windows) and close that application. |
 
+## 7a. Detectors and extra APIs
+
+- **Detectors:** The failure worker runs five detectors: `hallucination`, `planning_failure`, `tool_misuse`, `reasoning_loop`, `memory_contradiction`. See `GET /api/v1/detectors` for IDs and default thresholds.
+- **Analytics:** `GET /api/v1/analytics/runs_summary?days=7&by_detector=true` returns runs per day, avg_latency_ms per day, and `failure_rate_per_detector` (per-day rates for each detector).
+- **Task datasets:** `POST /api/v1/datasets` with `{"name": "...", "tasks": [{"query": "...", "env": {}}, ...]}` creates a dataset. Use the returned `dataset_id` in `POST /api/v1/simulations` (body: `dataset_id`) to run simulations from that dataset instead of a template.
+
 ## 8. Going online (deployment)
 
 See **[docs/DEPLOY.md](DEPLOY.md)** for step-by-step deployment (single host, env vars, frontend build, optional combined API + dashboard).
@@ -208,7 +215,7 @@ See **[docs/DEPLOY.md](DEPLOY.md)** for step-by-step deployment (single host, en
 
 - **Backend env:** `DATABASE_URL`, `API_KEY`, `OPENAI_API_KEY`; for cross-origin frontend set `CORS_ORIGINS` to your dashboard URL(s).
 - **Frontend:** Build with `VITE_API_BASE=` (same host) or `VITE_API_BASE=https://your-api-url` (split). Deploy `frontend/dist` or copy to `backend/static` and set `STATIC_DIR=./static` for combined deploy.
-- **Processes:** Run API (uvicorn), then worker_failures and worker_simulations as separate processes or platform workers.
+- **Processes:** Run API (uvicorn), then worker_failures and worker_simulations as separate processes or platform workers. To run workers in the cloud (e.g. Render background workers), see Workers in the cloud in [docs/DEPLOY.md](DEPLOY.md).
 - **TLS:** Use the platform’s HTTPS or a reverse proxy; never commit secrets.
 
 ---
@@ -218,4 +225,4 @@ See **[docs/DEPLOY.md](DEPLOY.md)** for step-by-step deployment (single host, en
 - **Local run:** Copy `backend/.env.example` to `backend/.env`, set `OPENAI_API_KEY` (and optionally `API_KEY`). Run `.\scripts\start.ps1 -IncludeFrontend` (or the Python start script) from the repo root; open http://localhost:5173.
 - **Real agent:** Start `real_llm_agent.py` on port 8002 with `FLIGHT_RECORDER_API_KEY` and `OPENAI_API_KEY` set; create a simulation pointing to `http://127.0.0.1:8002/agent` to see real LLM runs and detector scores.
 - **Going online:** After the productization pass, deploy to one host (e.g. Railway, Render, Fly), set env vars, build the frontend and point it at your API URL. See §8 above.
-- **Design docs:** `docs/postgres_schema.md`, `docs/failure_patterns_design.md` are for implementation later. `docs/pricing_ideas.md` is archived (no current plans to sell).
+- **Design docs:** `docs/postgres_schema.md`, `docs/failure_patterns_design.md` are for implementation later. **Evolution plan:** See [docs/ROADMAP.md](ROADMAP.md) for the 2–4 week roadmap (trace timeline, failure badges, clustering, etc.).

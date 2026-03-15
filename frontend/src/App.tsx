@@ -10,6 +10,7 @@ type RunSummary = {
   status: string
   user_query?: string | null
   failure_count?: number
+  failure_detectors?: string[]
 }
 
 type RunDetail = {
@@ -53,8 +54,10 @@ type Simulation = {
   status: string
   metrics: {
     total_runs?: number
+    success?: number
     success_rate?: number
     hallucination_rate?: number
+    tool_error_rate?: number
     avg_latency_ms?: number
   }
 }
@@ -64,6 +67,15 @@ type FailurePattern = {
   explanation_key: string
   count: number
   example_run_ids: string[]
+}
+
+type FailureCluster = {
+  id: string
+  name: string
+  detector: string
+  summary: string
+  run_ids: string[]
+  count: number
 }
 
 // Use build-time API URL, or same-origin when dashboard is served from the API host (combined deploy), or fallback for old static site.
@@ -106,10 +118,13 @@ function App() {
       : '',
     task_template: 'math_qa',
     num_runs: 3,
+    custom_query: '',
   }))
   const [simCreateMsg, setSimCreateMsg] = useState<string | null>(null)
   const [patterns, setPatterns] = useState<FailurePattern[]>([])
   const [patternsDays, setPatternsDays] = useState<7 | 30>(7)
+  const [clusters, setClusters] = useState<FailureCluster[]>([])
+  const [clustersDays, setClustersDays] = useState<7 | 30>(7)
   const [hasMoreRuns, setHasMoreRuns] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [agents, setAgents] = useState<string[]>([])
@@ -117,6 +132,45 @@ function App() {
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
   const [copyRunIdMsg, setCopyRunIdMsg] = useState<string | null>(null)
+  const [copyCurlMsg, setCopyCurlMsg] = useState<string | null>(null)
+  const [collapsedStepIds, setCollapsedStepIds] = useState<Set<string>>(new Set())
+  const [theme] = useState<'dark'>(() => 'dark')
+  const [failureRatesByDay, setFailureRatesByDay] = useState<Record<string, Record<string, number>>>({})
+
+  useEffect(() => {
+    setCollapsedStepIds(new Set())
+  }, [selectedRunId])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', 'dark')
+  }, [])
+
+  const toggleStepCollapsed = (stepId: string) => {
+    setCollapsedStepIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(stepId)) next.delete(stepId)
+      else next.add(stepId)
+      return next
+    })
+  }
+
+  const detectorLabel = (d: string) => {
+    const labels: Record<string, string> = {
+      hallucination: 'Hallucination',
+      planning_failure: 'Planning',
+      tool_misuse: 'Tool misuse',
+      reasoning_loop: 'Reasoning loop',
+      memory_contradiction: 'Memory contradiction',
+      overall: 'Overall',
+    }
+    return labels[d] ?? d
+  }
+  const detectorSeverity = (score: number | null): 'high' | 'medium' | 'low' => {
+    if (score == null) return 'low'
+    if (score >= 80) return 'high'
+    if (score >= 50) return 'medium'
+    return 'low'
+  }
 
   const saveApiKey = () => {
     if (apiKey.trim()) localStorage.setItem(STORAGE_API_KEY, apiKey.trim())
@@ -132,11 +186,20 @@ function App() {
     setSimCreateMsg(null)
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (apiKey.trim()) headers['X-API-Key'] = apiKey.trim()
+    const body: Record<string, unknown> = {
+      name: simForm.name,
+      agent_endpoint: simForm.agent_endpoint,
+      task_template: simForm.task_template,
+      num_runs: simForm.num_runs,
+    }
+    if (simForm.task_template === 'custom' && simForm.custom_query?.trim()) {
+      body.template_config = { query: simForm.custom_query.trim(), env: {} }
+    }
     try {
       const res = await fetch(`${API_BASE}/api/v1/simulations`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(simForm),
+        body: JSON.stringify(body),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -189,14 +252,25 @@ function App() {
   const refreshAll = () => {
     fetchRuns(0, false)
     setRunsPerDay([])
+    setFailureRatesByDay({})
     setPatterns([])
-    fetch(`${API_BASE}/api/v1/analytics/runs_summary?days=${analyticsTab === '30d' ? 30 : analyticsTab === '7d' ? 7 : 1}`)
+    const days = analyticsTab === '30d' ? 30 : analyticsTab === '7d' ? 7 : 1
+    fetch(`${API_BASE}/api/v1/analytics/runs_summary?days=${days}&by_detector=true`)
       .then((r) => r.ok && r.json())
-      .then((d) => d && setRunsPerDay(d.runs_per_day ?? []))
+      .then((d) => {
+        if (d) {
+          setRunsPerDay(d.runs_per_day ?? [])
+          setFailureRatesByDay(d.failure_rate_per_detector ?? {})
+        }
+      })
       .catch(() => {})
     fetch(`${API_BASE}/api/v1/failure_patterns?days=${patternsDays}`)
       .then((r) => r.ok && r.json())
       .then((d) => d && setPatterns(d.patterns ?? []))
+      .catch(() => {})
+    fetch(`${API_BASE}/api/v1/failure_clusters?days=${clustersDays}`)
+      .then((r) => r.ok && r.json())
+      .then((d) => d && setClusters(d.clusters ?? []))
       .catch(() => {})
     fetch(`${API_BASE}/api/v1/simulations`)
       .then((r) => r.ok && r.json())
@@ -258,12 +332,14 @@ function App() {
     const fetchAnalytics = async () => {
       const days = analyticsTab === '30d' ? 30 : analyticsTab === '7d' ? 7 : 1
       try {
-        const res = await fetch(`${API_BASE}/api/v1/analytics/runs_summary?days=${days}`)
+        const res = await fetch(`${API_BASE}/api/v1/analytics/runs_summary?days=${days}&by_detector=true`)
         if (!res.ok) return
         const data = await res.json()
         setRunsPerDay(data.runs_per_day ?? [])
+        setFailureRatesByDay(data.failure_rate_per_detector ?? {})
       } catch {
         setRunsPerDay([])
+        setFailureRatesByDay({})
       }
     }
     fetchAnalytics()
@@ -282,6 +358,20 @@ function App() {
     }
     fetchPatterns()
   }, [patternsDays])
+
+  useEffect(() => {
+    const fetchClusters = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/failure_clusters?days=${clustersDays}`)
+        if (!res.ok) return
+        const data = await res.json()
+        setClusters(data.clusters ?? [])
+      } catch {
+        setClusters([])
+      }
+    }
+    fetchClusters()
+  }, [clustersDays])
 
   const avgLatency =
     runs.length > 0
@@ -417,8 +507,21 @@ function App() {
                     <option value="doc_qa">doc_qa</option>
                     <option value="multi_turn">multi_turn</option>
                     <option value="code_assist">code_assist</option>
+                    <option value="custom">custom (your own prompt)</option>
                   </select>
                 </label>
+                {simForm.task_template === 'custom' && (
+                  <label className="onboarding-label">
+                    Custom query (sent to agent each run)
+                    <textarea
+                      className="onboarding-input"
+                      rows={3}
+                      placeholder="e.g. What is the capital of France?"
+                      value={simForm.custom_query}
+                      onChange={(e) => setSimForm({ ...simForm, custom_query: e.target.value })}
+                    />
+                  </label>
+                )}
                 <label className="onboarding-label">
                   Number of runs
                   <input
@@ -488,7 +591,7 @@ function App() {
           </div>
         </section>
 
-        <section className="runs-analytics-row">
+        <section id="runs-section" className="runs-analytics-row">
           <div className="card-panel runs-list">
             <div className="card-header">
               <div>
@@ -590,6 +693,18 @@ function App() {
                         {(run.failure_count ?? 0) > 0 && (
                           <span className="run-failure-pill" title="Failure count">{run.failure_count} failures</span>
                         )}
+                        {(run.failure_detectors ?? []).length > 0 && (
+                          <span className="run-detector-badges">
+                            {(run.failure_detectors ?? []).slice(0, 4).map((d) => (
+                              <span key={d} className={`detector-badge detector-${d.replace('_', '-')}`} title={detectorLabel(d)}>
+                                {detectorLabel(d)}
+                              </span>
+                            ))}
+                            {(run.failure_detectors ?? []).length > 4 && (
+                              <span className="detector-badge detector-more">+{(run.failure_detectors ?? []).length - 4}</span>
+                            )}
+                          </span>
+                        )}
                       </div>
                       {run.user_query && (
                         <div className="run-query-preview" title={run.user_query}>{run.user_query}</div>
@@ -645,6 +760,23 @@ function App() {
                   >
                     {copyRunIdMsg ?? 'Copy run ID'}
                   </button>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => {
+                      if (!selectedRun?.run.id) return
+                      const base = API_BASE ? API_BASE.replace(/\/$/, '') : (typeof window !== 'undefined' ? window.location.origin : '')
+                      const url = `${base}/api/v1/runs/${selectedRun.run.id}`
+                      const curl = apiKey.trim()
+                        ? `curl -s -H "X-API-Key: YOUR_KEY" "${url}"`
+                        : `curl -s "${url}"`
+                      navigator.clipboard.writeText(curl)
+                      setCopyCurlMsg('Copied!')
+                      setTimeout(() => setCopyCurlMsg(null), 2000)
+                    }}
+                  >
+                    {copyCurlMsg ?? 'Copy curl'}
+                  </button>
                 </div>
                 <div className="run-summary">
                   <p>
@@ -671,11 +803,14 @@ function App() {
                           </div>
                         ))}
                       {selectedRun.failures
-                        .filter((f) => f.detector === 'hallucination')
-                        .slice(0, 1)
+                        .filter((f) => f.detector !== 'overall')
                         .map((f) => (
-                          <div key={f.id} className="failure-pill">
-                            <span className="failure-label">Hallucination risk</span>
+                          <div
+                            key={f.id}
+                            className={`failure-pill severity-${detectorSeverity(f.score ?? 0)}`}
+                            title={f.explanation ?? undefined}
+                          >
+                            <span className="failure-label">{detectorLabel(f.detector)}</span>
                             <span className="failure-score">
                               {f.score !== null ? `${f.score}/100` : 'n/a'}
                             </span>
@@ -683,73 +818,99 @@ function App() {
                           </div>
                         ))}
                       {selectedRun.failures
-                        .filter((f) => f.detector === 'hallucination')
-                        .slice(0, 1)
-                        .map((f) =>
-                          f.explanation ? (
-                            <p key={`${f.id}-ex`} className="failure-explanation">
-                              {f.explanation}
-                            </p>
-                          ) : null,
-                        )}
-                      {selectedRun.failures
-                        .filter((f) => f.detector === 'planning_failure')
-                        .slice(0, 1)
+                        .filter((f) => f.detector !== 'overall' && f.explanation)
+                        .slice(0, 3)
                         .map((f) => (
-                          <div key={f.id} className="failure-pill planning">
-                            <span className="failure-label">Planning risk</span>
-                            <span className="failure-score">
-                              {f.score !== null ? `${f.score}/100` : 'n/a'}
-                            </span>
-                            {f.label && <span className="failure-tag">{f.label}</span>}
-                          </div>
+                          <p key={`${f.id}-ex`} className="failure-explanation">
+                            {f.explanation}
+                          </p>
                         ))}
-                      {selectedRun.failures
-                        .filter((f) => f.detector === 'planning_failure')
-                        .slice(0, 1)
-                        .map((f) =>
-                          f.explanation ? (
-                            <p key={`${f.id}-pf-ex`} className="failure-explanation">
-                              {f.explanation}
-                            </p>
-                          ) : null,
-                        )}
                     </div>
                   )}
                 </div>
 
-                <div className="steps-timeline">
-                  <h3>Steps</h3>
-                  {selectedRun.steps.length === 0 && <p>No steps recorded.</p>}
-                  <ol>
-                    {selectedRun.steps.map((s) => (
-                      <li key={s.id} className={`step step-${s.step_type}`}>
-                        <div className="step-header">
-                          <span className="step-idx">#{s.idx}</span>
-                          <span className="step-type">{s.step_type}</span>
-                          <span className="step-time">
-                            {new Date(s.timestamp).toLocaleTimeString()}
-                          </span>
+                <div className="trace-timeline">
+                  <h3>Trace timeline</h3>
+                  <div className="timeline-track">
+                    <div className="timeline-item timeline-user-query">
+                      <div className="timeline-marker" title="User query" />
+                      <div className="timeline-content">
+                        <div className="timeline-label">User query</div>
+                        <div className="timeline-body">
+                          {selectedRun.run.input?.user_query ?? '—'}
                         </div>
-                        <div className="step-body">
-                          {s.request != null && (
-                            <pre className="step-block">
-                              <strong>Request</strong>
-                              {'\n'}
-                              {JSON.stringify(s.request, null, 2)}
-                            </pre>
-                          )}
-                          {s.response != null && (
-                            <pre className="step-block">
-                              <strong>Response</strong>
-                              {'\n'}
-                              {JSON.stringify(s.response, null, 2)}
-                            </pre>
-                          )}
+                      </div>
+                    </div>
+                    {selectedRun.steps.length === 0 && (
+                      <div className="timeline-item">
+                        <div className="timeline-marker" />
+                        <div className="timeline-content">
+                          <div className="timeline-label">No steps recorded</div>
                         </div>
-                      </li>
-                    ))}
-                  </ol>
+                      </div>
+                    )}
+                    {selectedRun.steps.map((s) => {
+                      const isCollapsed = collapsedStepIds.has(s.id)
+                      const toolName = typeof s.request === 'object' && s.request != null && 'tool' in s.request
+                        ? String((s.request as { tool?: string }).tool ?? '')
+                        : typeof s.request === 'object' && s.request != null && 'tool_name' in s.request
+                          ? String((s.request as { tool_name?: string }).tool_name ?? '')
+                          : ''
+                      const stepLabel = s.step_type === 'tool_call' && toolName
+                        ? `Tool call: ${toolName}`
+                        : s.step_type === 'tool_result' && toolName
+                          ? `Tool result: ${toolName}`
+                          : s.step_type
+                      return (
+                        <div key={s.id} className={`timeline-item step-${s.step_type.replace('_', '-')}`}>
+                          <div className="timeline-marker" title={stepLabel} />
+                          <div className="timeline-content">
+                            <button
+                              type="button"
+                              className="timeline-label-btn"
+                              onClick={() => toggleStepCollapsed(s.id)}
+                              aria-expanded={!isCollapsed}
+                            >
+                              <span className="timeline-label">
+                                #{s.idx} {stepLabel}
+                              </span>
+                              <span className="timeline-time">
+                                {new Date(s.timestamp).toLocaleTimeString()}
+                              </span>
+                              <span className="timeline-toggle">{isCollapsed ? '⊕' : '⊖'}</span>
+                            </button>
+                            {!isCollapsed && (
+                              <div className="timeline-body step-body">
+                                {s.request != null && (
+                                  <pre className="step-block">
+                                    <strong>Request</strong>
+                                    {'\n'}
+                                    {JSON.stringify(s.request, null, 2)}
+                                  </pre>
+                                )}
+                                {s.response != null && (
+                                  <pre className="step-block">
+                                    <strong>Response</strong>
+                                    {'\n'}
+                                    {JSON.stringify(s.response, null, 2)}
+                                  </pre>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    <div className="timeline-item timeline-final">
+                      <div className="timeline-marker" title="Final output" />
+                      <div className="timeline-content">
+                        <div className="timeline-label">Final output</div>
+                        <div className="timeline-body">
+                          {selectedRun.run.output?.final_answer ?? '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </>
             )}
@@ -793,25 +954,65 @@ function App() {
               <p className="analytics-empty">No data for this period.</p>
             )}
             {runsPerDay.length > 0 && (
-              <div className="analytics-bars">
-                {runsPerDay.map((d) => (
-                  <div key={d.day} className="analytics-bar">
-                    <div
-                      className="bar-runs"
-                      style={{ height: `${Math.min(100, Math.max(8, d.count * 12))}px` }}
-                      title={`${d.count} runs`}
-                    />
-                    <div
-                      className="bar-halluc"
-                      style={{ height: `${Math.min(80, d.hallucination_rate)}px` }}
-                      title={`${d.hallucination_rate}% hallucinations`}
-                    />
-                    <span className="bar-label">
-                      {new Date(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                    </span>
+              <>
+                <div className="analytics-bars">
+                  {runsPerDay.map((d) => (
+                    <div key={d.day} className="analytics-bar">
+                      <div
+                        className="bar-runs"
+                        style={{ height: `${Math.min(100, Math.max(8, d.count * 12))}px` }}
+                        title={`${d.count} runs`}
+                      />
+                      <div
+                        className="bar-halluc"
+                        style={{ height: `${Math.min(80, d.hallucination_rate)}px` }}
+                        title={`${d.hallucination_rate}% hallucinations`}
+                      />
+                      <span className="bar-label">
+                        {new Date(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {Object.keys(failureRatesByDay).length > 0 && (
+                  <div className="analytics-by-detector">
+                    <h4 className="analytics-subtitle">Failure rate by detector (%)</h4>
+                    <div className="detector-legend">
+                      {['hallucination', 'planning_failure', 'tool_misuse', 'reasoning_loop', 'memory_contradiction'].map((det) => (
+                        <span key={det} className="detector-legend-item">
+                          <span className={`detector-legend-dot detector-${det.replace('_', '-')}`} />
+                          {detectorLabel(det)}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="detector-rates-bars">
+                      {runsPerDay.map((d) => {
+                        const rates = failureRatesByDay[d.day] ?? {}
+                        return (
+                          <div key={d.day} className="detector-rate-row">
+                            <span className="detector-rate-label">
+                              {new Date(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            </span>
+                            <div className="detector-rate-stack">
+                              {(['hallucination', 'planning_failure', 'tool_misuse', 'reasoning_loop', 'memory_contradiction'] as const).map((det) => {
+                                const pct = rates[det] ?? 0
+                                return (
+                                  <span
+                                    key={det}
+                                    className={`detector-rate-seg detector-${det.replace('_', '-')}`}
+                                    style={{ flex: pct > 0 ? pct : 0.001 }}
+                                    title={`${detectorLabel(det)}: ${pct}%`}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
         </section>
@@ -884,12 +1085,140 @@ function App() {
         <section className="card-panel">
           <div className="card-header">
             <div>
+              <h2>Failure clusters</h2>
+              <div className="card-subtitle">
+                Grouped similar failures (text-based). Embedding-based clustering available with Postgres + pgvector.
+              </div>
+            </div>
+            <div className="tabs">
+              <button
+                type="button"
+                className={`tab ${clustersDays === 7 ? 'active' : ''}`}
+                onClick={() => setClustersDays(7)}
+              >
+                7d
+              </button>
+              <button
+                type="button"
+                className={`tab ${clustersDays === 30 ? 'active' : ''}`}
+                onClick={() => setClustersDays(30)}
+              >
+                30d
+              </button>
+            </div>
+          </div>
+          {clusters.length === 0 && <p>No failure clusters in this period.</p>}
+          {clusters.length > 0 && (
+            <div className="patterns-table-wrap">
+              <table className="patterns-table">
+                <thead>
+                  <tr>
+                    <th>Cluster</th>
+                    <th>Detector</th>
+                    <th>Count</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clusters.map((c) => (
+                    <tr key={c.id}>
+                      <td className="pattern-summary" title={c.summary}>{c.name}</td>
+                      <td><span className="pattern-detector">{c.detector}</span></td>
+                      <td>{c.count}</td>
+                      <td>
+                        {c.run_ids.length > 0 ? (
+                          <button
+                            type="button"
+                            className="btn-link"
+                            onClick={() => {
+                              setSelectedRunId(c.run_ids[0])
+                              setSelectedRun(null)
+                            }}
+                          >
+                            View run
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="card-panel">
+          <div className="card-header">
+            <div>
               <h2>Simulations</h2>
               <div className="card-subtitle">
                 Batch tests against your agent. Total runs = completed calls; success % = runs with status success;
-                hallucinations % = runs where the hallucination detector fired. Click a simulation to filter Recent Runs.
+                hallucinations % = runs where the hallucination detector fired. Use a built-in template or a custom prompt.
               </div>
             </div>
+          </div>
+          <div className="sim-create-form">
+            <label className="form-label">
+              Name
+              <input
+                type="text"
+                className="form-input"
+                value={simForm.name}
+                onChange={(e) => setSimForm({ ...simForm, name: e.target.value })}
+              />
+            </label>
+            <label className="form-label">
+              Agent endpoint
+              <input
+                type="url"
+                className="form-input"
+                placeholder="https://your-agent.example.com/agent"
+                value={simForm.agent_endpoint}
+                onChange={(e) => setSimForm({ ...simForm, agent_endpoint: e.target.value })}
+              />
+            </label>
+            <label className="form-label">
+              Task template
+              <select
+                className="form-input"
+                value={simForm.task_template}
+                onChange={(e) => setSimForm({ ...simForm, task_template: e.target.value })}
+              >
+                <option value="math_qa">math_qa</option>
+                <option value="doc_qa">doc_qa</option>
+                <option value="multi_turn">multi_turn</option>
+                <option value="code_assist">code_assist</option>
+                <option value="custom">custom (your own prompt)</option>
+              </select>
+            </label>
+            {simForm.task_template === 'custom' && (
+              <label className="form-label">
+                Custom query (sent each run)
+                <textarea
+                  className="form-input"
+                  rows={2}
+                  placeholder="e.g. What is the capital of France?"
+                  value={simForm.custom_query}
+                  onChange={(e) => setSimForm({ ...simForm, custom_query: e.target.value })}
+                />
+              </label>
+            )}
+            <label className="form-label">
+              Number of runs
+              <input
+                type="number"
+                min={1}
+                className="form-input form-input-narrow"
+                value={simForm.num_runs}
+                onChange={(e) =>
+                  setSimForm({ ...simForm, num_runs: Math.max(1, parseInt(e.target.value, 10) || 1) })
+                }
+              />
+            </label>
+            <button type="button" className="btn-primary" onClick={createSimulationFromUi}>
+              Create simulation
+            </button>
+            {simCreateMsg && <p className="form-msg">{simCreateMsg}</p>}
           </div>
           {simulations.length === 0 && <p>No simulations yet.</p>}
           {simulations.length > 0 && (
@@ -906,6 +1235,17 @@ function App() {
                   <div className="run-title">
                     <span className="run-agent">{s.name}</span>
                     <span className={`run-status status-${s.status}`}>{s.status}</span>
+                    <button
+                      type="button"
+                      className="btn-view-runs"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedSimulationId(s.id)
+                        document.getElementById('runs-section')?.scrollIntoView({ behavior: 'smooth' })
+                      }}
+                    >
+                      View runs
+                    </button>
                   </div>
                   <div className="run-meta">
                     <span>{new Date(s.created_at).toLocaleString()}</span>
@@ -916,6 +1256,12 @@ function App() {
                     )}
                     {typeof s.metrics.hallucination_rate === 'number' && (
                       <span>{s.metrics.hallucination_rate}% hallucinations</span>
+                    )}
+                    {typeof s.metrics.tool_error_rate === 'number' && (
+                      <span>{s.metrics.tool_error_rate}% tool errors</span>
+                    )}
+                    {s.metrics.avg_latency_ms != null && (
+                      <span>{s.metrics.avg_latency_ms} ms avg</span>
                     )}
                   </div>
                 </li>
