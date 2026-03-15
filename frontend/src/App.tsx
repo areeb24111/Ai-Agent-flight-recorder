@@ -134,7 +134,6 @@ function App() {
   const [copyRunIdMsg, setCopyRunIdMsg] = useState<string | null>(null)
   const [copyCurlMsg, setCopyCurlMsg] = useState<string | null>(null)
   const [collapsedStepIds, setCollapsedStepIds] = useState<Set<string>>(new Set())
-  const [theme] = useState<'dark'>(() => 'dark')
   const [failureRatesByDay, setFailureRatesByDay] = useState<Record<string, Record<string, number>>>({})
 
   useEffect(() => {
