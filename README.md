@@ -40,15 +40,15 @@ The dashboard shows metrics, recent runs with reliability and failure indicators
 
 | Overview & run detail | Analytics & failure patterns |
 |----------------------|------------------------------|
-| ![Dashboard overview and run detail](docs/screenshot-overview.png) | ![Analytics and failure patterns](docs/screenshot-analytics.png) |
+| ![Dashboard overview and run detail](assets/screenshot-overview.png) | ![Analytics and failure patterns](assets/screenshot-analytics.png) |
 
 *Metrics (total runs, latency, success rate, runs with failures), recent runs list, run detail with trace timeline and detector scores (e.g. tool misuse), and the simulations form.*
 
-![Failure clusters and simulations](docs/screenshot-simulations.png)
+![Failure clusters and simulations](assets/screenshot-simulations.png)
 
 *Failure clusters (grouped similar failures) and simulations: create jobs with templates or custom prompts, view completed runs and success/hallucination rates.*
 
-**Note:** Add your own screenshots to the `docs/` folder as `screenshot-overview.png`, `screenshot-analytics.png`, and `screenshot-simulations.png`, or update the paths above to match your files.
+**How to add these screenshots:** Put your image files in the `assets/` folder at the repo root with these exact names: `screenshot-overview.png`, `screenshot-analytics.png`, `screenshot-simulations.png`. Then commit and push (see end of README).
 
 ---
 
@@ -56,7 +56,7 @@ The dashboard shows metrics, recent runs with reliability and failure indicators
 
 High-level flow: agents (via SDK) send runs to the API; the failure worker categorizes them (hallucination, planning, tool misuse, reasoning loop, memory contradiction); analytics are stored in SQLite/Postgres with optional embedding-based clustering; the simulation engine runs batch tests from templates or datasets; the dashboard reads from the API to show runs, metrics, and failure patterns.
 
-*Add your architecture diagram (e.g. `architecture.png`) to the repo and link it here.*
+![Architecture diagram](assets/architecture.png)
 
 Failure detection → Analytics (SQLite/Postgres, optional clustering) → Simulation engine (API + worker + templates) → Dashboard (API + React).
 
@@ -176,6 +176,26 @@ Planned: trace timeline UI, failure badges, embedding-based clustering, optional
 | GET | `/api/v1/datasets` | no | List datasets |
 | GET | `/api/v1/failure_patterns?days=N` | no | Failure patterns by detector + explanation |
 | GET | `/api/v1/failure_clusters?days=N` | no | Failure clusters (text-based; pgvector later) |
+
+---
+
+## Adding screenshots
+
+To show dashboard and architecture images on GitHub:
+
+1. Create an **`assets`** folder in the repo root (same level as `README.md`).
+2. Add your image files with these names:
+   - `screenshot-overview.png` — metrics + recent runs + run detail
+   - `screenshot-analytics.png` — analytics chart + failure patterns
+   - `screenshot-simulations.png` — failure clusters + simulations list
+   - `architecture.png` — architecture diagram
+3. Commit and push:
+   ```bash
+   git add assets/
+   git commit -m "docs: add dashboard and architecture screenshots"
+   git push origin main
+   ```
+   The README already links to `assets/screenshot-overview.png`, `assets/screenshot-analytics.png`, `assets/screenshot-simulations.png`, and `assets/architecture.png`, so they will appear automatically.
 
 ---
 
