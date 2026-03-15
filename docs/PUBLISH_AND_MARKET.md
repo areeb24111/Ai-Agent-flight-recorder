@@ -65,4 +65,6 @@ Steps to put the project on GitHub and promote it on LinkedIn. No pricing or pai
 | 4 | Write a short LinkedIn post (launch or demo); link to the repo. |
 | 5 | (Optional) Deploy a live demo (e.g. Render/Railway) and add the demo URL to README and LinkedIn. |
 
+Use neutral commit messages (e.g. "Fix TypeScript in step blocks", "Add deploy config") so the repo stays professional.
+
 Pricing is dropped for now; you can revisit `docs/pricing_ideas.md` later if you decide to monetize.

@@ -10,8 +10,11 @@ Single-host deployment so the dashboard and API are reachable on the internet. T
 2. Go to [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**.
 3. Connect the repo `https://github.com/areeb24111/Ai-Agent-flight-recorder`.
 4. Render will read `render.yaml`: it creates a **Web Service** (the API) and can create a **Postgres** DB. Confirm and deploy.
-5. In the service **Environment** tab, set `OPENAI_API_KEY` (and optionally adjust `API_KEY`). For **CORS** (if you add a frontend on another URL later), set `CORS_ORIGINS` to that URL.
-6. After deploy, your API is at `https://agent-flight-recorder-api.onrender.com` (or the URL Render shows). Use it as `VITE_API_BASE` when building the frontend, or add a **Static Site** on Render that points to this API.
+5. **Add your OpenAI key:** In the service → **Environment** → **Add Environment Variable**. Key: `OPENAI_API_KEY`, Value: your OpenAI API key (starts with `sk-...`). Save; Render will redeploy. Never commit this key to the repo.
+6. (Optional) Set `API_KEY` if you want to protect ingest/simulation endpoints; leave blank for open access.
+7. After deploy, your API is at the URL Render shows (e.g. `https://agent-flight-recorder-api.onrender.com`). Use it as `VITE_API_BASE` when building the frontend, or add a **Static Site** on Render that points to this API.
+
+**If the Static Site fails with "Publish directory build does not exist" or "Empty build command":** In the Static Site service go to **Settings**. Set **Build Command** to `cd frontend && npm install && npm run build` and **Publish Directory** to `frontend/dist`. In **Environment** add `VITE_API_BASE` = your API URL (e.g. `https://agent-flight-recorder-api.onrender.com`, no trailing slash). Save and run **Manual Deploy**.
 
 **Push to GitHub (if you get “Authentication failed”):** GitHub no longer accepts account passwords over HTTPS. Use a **Personal Access Token (PAT)**: GitHub → Settings → Developer settings → Personal access tokens → Generate (classic), scope `repo`. Then run:
 
@@ -253,7 +256,7 @@ Cloud Run runs **request-based** services. The failure and simulation workers ar
 - [ ] `DATABASE_URL` set (Postgres recommended for production).
 - [ ] `API_KEY` set; agents use the same value as `X-API-Key` / `FLIGHT_RECORDER_API_KEY`.
 - [ ] `OPENAI_API_KEY` set if you use hallucination/planning detectors.
-- [ ] Frontend built with correct `VITE_API_BASE` (empty for same host, or your API URL for split).
+- [ ] Frontend build uses correct `VITE_API_BASE` (empty for same host, or your API URL for split).
 - [ ] `CORS_ORIGINS` includes your frontend URL if it’s on a different domain.
 - [ ] For combined deploy: `STATIC_DIR` set and `backend/static` (or your path) contains the built frontend.
 - [ ] Workers run with same `DATABASE_URL` and env as the API.
