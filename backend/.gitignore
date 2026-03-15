@@ -1,0 +1,12 @@
+# Logs from start script
+logs/
+*.log
+
+# Env and DB (do not commit secrets)
+.env
+*.db
+
+.venv/
+
+# Copied frontend build for combined deploy (see docs/DEPLOY.md)
+static/

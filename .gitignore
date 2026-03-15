@@ -1,0 +1,27 @@
+# Env and secrets
+.env
+*.env
+.env.local
+.env.*.local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.db
+
+# Node
+node_modules/
+
+# Build / runtime
+frontend/dist/
+backend/static/
+backend/logs/
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
