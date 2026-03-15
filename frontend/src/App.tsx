@@ -66,10 +66,15 @@ type FailurePattern = {
   example_run_ids: string[]
 }
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE !== undefined
-    ? (import.meta.env.VITE_API_BASE as string)
-    : 'http://127.0.0.1:8000'
+// Use build-time API URL, or when on the live Render dashboard host, point to the Render API (so the site works even if VITE_API_BASE wasn't set).
+function getApiBase(): string {
+  const build = import.meta.env.VITE_API_BASE
+  if (build !== undefined && build !== '') return build as string
+  if (typeof window !== 'undefined' && window.location.hostname === 'ai-agent-flight-recorder.onrender.com')
+    return 'https://agent-flight-recorder-api.onrender.com'
+  return 'http://127.0.0.1:8000'
+}
+const API_BASE = getApiBase()
 const STORAGE_ONBOARDING = 'afr_onboarding_done'
 const STORAGE_API_KEY = 'afr_api_key'
 
@@ -91,12 +96,14 @@ function App() {
     () => (typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_API_KEY)) || '',
   )
   const [onboardingStep, setOnboardingStep] = useState(0)
-  const [simForm, setSimForm] = useState({
+  const [simForm, setSimForm] = useState(() => ({
     name: 'smoke-test',
-    agent_endpoint: 'http://127.0.0.1:8001/agent',
+    agent_endpoint: typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://127.0.0.1:8001/agent'
+      : '',
     task_template: 'math_qa',
     num_runs: 3,
-  })
+  }))
   const [simCreateMsg, setSimCreateMsg] = useState<string | null>(null)
   const [patterns, setPatterns] = useState<FailurePattern[]>([])
   const [patternsDays, setPatternsDays] = useState<7 | 30>(7)
@@ -388,9 +395,10 @@ function App() {
                   />
                 </label>
                 <label className="onboarding-label">
-                  Agent endpoint
+                  Agent endpoint (use a public URL on the live site)
                   <input
                     className="onboarding-input"
+                    placeholder="https://your-agent.onrender.com/agent"
                     value={simForm.agent_endpoint}
                     onChange={(e) => setSimForm({ ...simForm, agent_endpoint: e.target.value })}
                   />
@@ -510,7 +518,12 @@ function App() {
               </button>
             </div>
             {error && (
-              <p className="error">Could not reach API or load runs ({error}). Check that the backend is running.</p>
+              <p className="error">
+                Could not reach API or load runs ({error}). Check that the backend is running.
+                {typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+                  <> If this is the live site, the dashboard may need a redeploy with <code>VITE_API_BASE</code> set to your API URL.</>
+                )}
+              </p>
             )}
             <div className="runs-toolbar">
               {agents.length > 0 && (

@@ -24,6 +24,7 @@ _cors_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
+    "https://ai-agent-flight-recorder.onrender.com",
 ]
 if app_settings.cors_origins:
     _cors_origins = [o.strip() for o in app_settings.cors_origins.split(",") if o.strip()]
